@@ -6,15 +6,23 @@ rm(list=ls())
 while (!is.null(dev.list())) dev.off()
 cat("\014")  
 
+# set the working path
+library(this.path)
+setwd(this.dir()) # set the active working directory to the directory of this file
+getwd()
+
+library("car")
+
+
 # Set code date 
-maincodedatestamp<-"20231002"
+maincodedatestamp<-"20231115"
 
 #############################
 # Define user input
 #############################
 
 # set name of the datafile to use
-FileToUse<-"testdata.RDS" # to be set by the USER 
+FileToUse<-"donations.rds" # to be set by the USER 
 
 # "FileToUSe" should contain the following data columns (data type in brackets):
 # KeyID   : Unique identifier for each donor (integer)
@@ -26,14 +34,15 @@ FileToUse<-"testdata.RDS" # to be set by the USER
 # This information is stored in a file called "SavedDeferralData_DD-MM-YYYY.RDS"
 
 # parameter to determine whether the plots go to a pdf file or to screen.
-plot_to_pdf<-F # to be set by the USER 
+plot_to_pdf<-T # to be set by the USER 
+
 
 # Set minimum acceptable Hb levels for males and females
-dtm<-8.4  # to be set by the USER 
-dtf<-7.8  # to be set by the USER 
+dtm<-135  # to be set by the USER 
+dtf<-125  # to be set by the USER 
 
 # Are Hb levels given in g/L (T) or in mmol/L (F)
-Hb_in_gpl<-F # to be set by the USER 
+Hb_in_gpl<-T# to be set by the USER 
 
 # European threshold (g/L)
 135*0.06206 # 135g/L for males = 8.3781 mmol/L
@@ -42,7 +51,7 @@ round(135*0.06206,1) # 8.4 mmol/L
 round(125*0.06206,1) # 7.8 mmol/L
 
 # Is a change in anonymous donor IDs required?
-changeIDs<-T # to be set by the USER 
+changeIDs<-F # to be set by the USER 
 
 # Set deferral percentile level
 cutoffperc<-0.99 # to be set by the USER 
@@ -64,6 +73,7 @@ library("lubridate") # required for extracting year info from a date variable
 library("Hmisc")     # to enable calculating splitpoints
 library("fitdistrplus") # to fit and plot normal distribution fits to the data
 library("stringr")   # to manipulate strings
+library("dplyr")     # data wrangling
 
 # restore old color palette
 palette("R3")
@@ -88,8 +98,9 @@ tosave<-append(tosave, list(cutoffperc=cutoffperc))
 # now read in the data
 data<-readRDS(FileToUse)
 (classes<-sapply(data,class))
-#     KeyID         Sex     DonDate          Hb 
-# "integer" "character"      "Date"   "numeric" 
+#     KeyID         Sex     DonDate          Hb    pre_Hb
+# "integer" "character"      "Date"   "numeric"   "numeric"
+
 
 # when was the first donation
 daterange<-min(data$DonDate)
@@ -101,7 +112,9 @@ tosave<-append(tosave, list(daterange=daterange))
 
 # remove all missing records
 sum(is.na(data$Hb))
-data<-data[!is.na(data$Hb),]
+data_complete <- data #Amber: hier is/was een probleem, namelijk donaties met een pre-donatiescreening onder de treshold hebben een NA Hb waarde (omdat er na de predonatie screening geen donatie was), maar we hebben in de verdere analyse wel beide nodig
+data_prescreening <- data[!is.na(data$pre_Hb),] #Amber: make a separate dataset with all records where a pre-screening was conducted
+data<-data[!is.na(data$Hb),] 
 nrrecs<-c(nrrecs,nrow(data))
 
 data<-data[!is.na(data$KeyID),]
@@ -115,9 +128,10 @@ tosave<-append(tosave, list(nrrecs=nrrecs))
 
 # Sort by date per donor
 data<-data[order(data$KeyID,data$DonDate),] 
+data_complete<-data_complete[order(data_complete$KeyID,data_complete$DonDate),] 
 # Create index for nr of donations
 data$numdons <- sequence(rle(data$KeyID)$lengths)
-
+data_complete$numdons <- sequence(rle(data_complete$KeyID)$lengths)
 
 # nr of donors
 length(unique(data$KeyID)) 
@@ -137,12 +151,20 @@ if (changeIDs) {
 
 # calculate distribution of nr of donations per donor
 table(data$numdons, data$Sex) 
+dontable <- table(data$numdons, data$Sex) 
+tosave<-append(tosave, list(dontable=dontable))
+
 
 # convert Hb levels if so required
 if (!Hb_in_gpl){
   dtm<-dtm/0.06206 -1e-6 # subtract a small margin to compensate for rounding errors
   dtf<-dtf/0.06206 -1e-6
   data$Hb<-data$Hb/0.06206
+  data$pre_Hb<-data$pre_Hb/0.06206
+  data_complete$Hb <- data_complete$Hb/0.06206
+  data_complete$pre_Hb <- data_complete$pre_Hb/0.06206
+  data_prescreening$Hb <- data_prescreening$Hb/0.06206
+  data_prescreening$pre_Hb <- data_prescreening$pre_Hb/0.06206
 }
 
 # calculate sex, mean Hb, Sd and nr of donations per donor
@@ -183,6 +205,7 @@ tosave<-append(tosave, list(malefits=malefits))
 tosave<-append(tosave, list(femalefits=femalefits))
 tosave<-append(tosave, list(maxDons=maxDons))
 
+# Postdonation screenings 
 # Set indicator for deferral
 data$def<-ifelse(data$Hb<dtf,1,0)
 data$def[data$Sex=="M"]<-ifelse(data$Hb[data$Sex=="M"]<dtm,1,0)
@@ -190,7 +213,7 @@ data$def[data$Sex=="M"]<-ifelse(data$Hb[data$Sex=="M"]<dtm,1,0)
 #create year variable
 data$year<-year(data$DonDate)
 
-# table deferrals per year
+# table deferrals per year 
 with(data,table(year, Sex))
 with(data,table(Sex,year,def))
 deff<-with(data[data$Sex=="F",],table(year,def))
@@ -221,6 +244,91 @@ with(data[data$Sex=="F",], points(as.numeric(table(numdons)), pch=2, col="red"))
 legend("topright", c("Males", "Females"), pch=c(1,2), lty=c(1,1), col=c("blue","red"))
 if(plot_to_pdf) dev.off()
 
+# Predonation screenings 
+# Set indicator for deferral
+data_prescreening$def<-ifelse(data_prescreening$pre_Hb<dtf,1,0)
+data_prescreening$def[data_prescreening$Sex=="M"]<-ifelse(data_prescreening$pre_Hb[data_prescreening$Sex=="M"]<dtm,1,0)
+
+#create year variable
+data_prescreening$year<-year(data_prescreening$DonDate)
+
+# table deferrals per year 
+with(data_prescreening,table(year, Sex))
+with(data_prescreening,table(Sex,year,def))
+pre_deff<-with(data_prescreening[data_prescreening$Sex=="F",],table(year,def))
+proportions(pre_deff, margin=1)
+pre_defm<-with(data_prescreening[data_prescreening$Sex=="M",],table(year,def))
+proportions(pre_defm, margin=1)
+tosave<-append(tosave, list(pre_defm=pre_defm))
+tosave<-append(tosave, list(pre_deff=pre_deff))
+
+# plot deferrals per year
+pre_maxdef<-max(c(proportions(pre_defm, margin=1)[,2],proportions(pre_deff, margin=1)[,2]))
+if(plot_to_pdf) pdf(file="Predonationscreening_Deferrals_per_year.pdf")
+plot(rownames(pre_defm), proportions(pre_defm, margin=1)[,2], ylim=c(0,pre_maxdef*1.2), col="blue", type="l",
+     ylab="Proportion deferred", xlab="Year")
+lines(rownames(pre_deff), proportions(pre_deff, margin=1)[,2], col="red")
+points(rownames(pre_defm), proportions(pre_defm, margin=1)[,2], pch=1, col="blue")
+points(rownames(pre_deff), proportions(pre_deff, margin=1)[,2], pch=2, col="red")
+legend("topright", c("Males", "Females"), pch=c(1,2), lty=c(1,1), col=c("blue","red"))
+if(plot_to_pdf) dev.off()
+
+#all postdonation screenings and predonation screenings
+# Set indicator for deferral
+data_complete$def<-ifelse(data_complete$Hb<dtf,1,0)
+data_complete$def[data_complete$Sex=="M"]<-ifelse(data_complete$Hb[data_complete$Sex=="M"]<dtm,1,0)
+data_complete$predef<-ifelse(data_complete$pre_Hb<dtf,1,0)
+data_complete$predef[data_complete$Sex=="M"]<-ifelse(data_complete$pre_Hb[data_complete$Sex=="M"]<dtm,1,0)
+data_complete$def[is.na(data_complete$def)] <- 0
+data_complete$predef[is.na(data_complete$predef)] <- 0 
+data_complete$sumdef <- (data_complete$def | data_complete$predef)*1
+
+#create year variable
+data_complete$year<-year(data_complete$DonDate)
+
+# table deferrals per year 
+with(data_complete,table(year, Sex))
+with(data_complete,table(Sex,year,sumdef))
+all_deff<-with(data_complete[data_complete$Sex=="F",],table(year,sumdef))
+proportions(all_deff, margin=1)
+all_defm<-with(data_complete[data_complete$Sex=="M",],table(year,sumdef))
+proportions(all_defm, margin=1)
+tosave<-append(tosave, list(all_defm=all_defm))
+tosave<-append(tosave, list(all_deff=all_deff))
+
+# plot deferrals per year
+all_maxdef<-max(c(proportions(all_defm, margin=1)[,2],proportions(all_deff, margin=1)[,2]))
+if(plot_to_pdf) pdf(file="alldonationscreening_Deferrals_per_year.pdf")
+plot(rownames(all_defm), proportions(all_defm, margin=1)[,2], ylim=c(0,all_maxdef*1.2), col="blue", type="l",
+     ylab="Proportion deferred", xlab="Year")
+lines(rownames(all_deff), proportions(all_deff, margin=1)[,2], col="red")
+points(rownames(all_defm), proportions(all_defm, margin=1)[,2], pch=1, col="blue")
+points(rownames(all_deff), proportions(all_deff, margin=1)[,2], pch=2, col="red")
+legend("topright", c("Males", "Females"), pch=c(1,2), lty=c(1,1), col=c("blue","red"))
+if(plot_to_pdf) dev.off()
+
+# table deferrals per year for first time donors
+with(data_complete[data_complete$numdons==1 & !is.na(data_complete$pre_Hb),],table(year, Sex))
+with(data_complete[data_complete$numdons==1 & !is.na(data_complete$pre_Hb),],table(Sex,year,sumdef))
+first_deff<-with(data_complete[data_complete$numdons==1 & !is.na(data_complete$pre_Hb) & data_complete$Sex=="F",],table(year,sumdef))
+proportions(first_deff, margin=1)
+first_defm<-with(data_complete[data_complete$numdons==1 & !is.na(data_complete$pre_Hb) & data_complete$Sex=="M",],table(year,sumdef))
+proportions(first_defm, margin=1)
+tosave<-append(tosave, list(first_defm=first_defm))
+tosave<-append(tosave, list(first_deff=first_deff))
+
+# plot deferrals per year
+first_maxdef<-max(c(proportions(first_defm, margin=1)[,2],proportions(first_deff, margin=1)[,2]))
+if(plot_to_pdf) pdf(file="First_donationscreening_Deferrals_per_year.pdf")
+plot(rownames(first_defm), proportions(first_defm, margin=1)[,2], ylim=c(0,first_maxdef*1.2), col="blue", type="l",
+     ylab="Proportion deferred", xlab="Year")
+lines(rownames(first_deff), proportions(first_deff, margin=1)[,2], col="red")
+points(rownames(first_defm), proportions(first_defm, margin=1)[,2], pch=1, col="blue")
+points(rownames(first_deff), proportions(first_deff, margin=1)[,2], pch=2, col="red")
+legend("topright", c("Males", "Females"), pch=c(1,2), lty=c(1,1), col=c("blue","red"))
+if(plot_to_pdf) dev.off()
+
+
 ##################################
 # Estimate measurement variation
 ##################################
@@ -242,8 +350,14 @@ data$dHb<-NA
 data$dHb<-data$Hb-data$Hb[precursor]
 data$dHb[data$KeyID != data$KeyID[precursor]]<-NA
 
+# also make a column for the previous Hb value
+data$prevHb<-NA
+data$prevHb<-data$Hb[precursor]
+data$prevHb[data$KeyID != data$KeyID[precursor]]<-NA
+
+
 # set plot parameters # to be set by the USER 
-intervaltoshow<-c(100, 730) # time interval to show
+intervaltoshow<-c(50, 730) # time interval to show
 ylim<-c(-40, 40)           # interval in dHb to show
 nrtoprint<-15000           # nr of observations to select for printing
 rollmeanWidth<-1000        # width of the rolling window
@@ -255,11 +369,11 @@ sel<-sample(self, nrtoprint, replace=F)
 sel<-sel[order(data$dt[sel])]
 if(plot_to_pdf) pdf(file="Change_in_Hb_level_by_interval_female.pdf")
 with(data[sel,], plot(dt, jitter(dHb, amount=.5), col="red", log="x", xlim=intervaltoshow, ylim=ylim,
-     xlab="Days between donations", ylab="Change in Hb level [g/L]"))
+                      xlab="Days between donations", ylab="Change in Hb level [g/L]"))
 abline(h=0,col=8)
 # add rolling mean
 with(data[sel,], lines(dt, rollmean(dHb, rollmeanWidth, fill = list(NA, NULL, NA)),
-  col = 3, lwd = 3 ))
+                       col = 3, lwd = 3 ))
 linfitf<-lm(dHb~ldt, data=data[self,])
 summary(linfitf)
 cx<-as.data.frame(log10(intervaltoshow))
@@ -274,7 +388,7 @@ sd(linfitf$residuals)
 # save info
 tosave<-append(tosave, list(coeff=linfitf$coefficients))
 tosave<-append(tosave, list(sdf=c(mean(data$Hb[self]), sd(data$Hb[self]), 
-                            sd(data$dHb[self]), sd(linfitf$residuals))))
+                                  sd(data$dHb[self]), sd(linfitf$residuals))))
 
 # plot association between time and Hb change for males
 intervaltoshow<-c(50, 730) # time interval to show
@@ -305,8 +419,155 @@ tosave<-append(tosave, list(coefm=linfitm$coefficients))
 tosave<-append(tosave, list(sdm=c(mean(data$Hb[selm]), sd(data$Hb[selm]), 
                                   sd(data$dHb[selm]), sd(linfitm$residuals))))
 
+
 ###########################################################
-# Create and save analysis file if it doesn't exist yet
+# Hb recovery extra analysis
+###########################################################
+#index for the previous donation
+idx<-1:nrow(data_complete)
+precursor<-idx-1
+precursor[1]<-nrow(data_complete)
+
+# check whether the previous observation was indeed a donation
+idx_noprev_donation<-idx[data_complete$KeyID == data_complete$KeyID[precursor] & is.na(data_complete$Hb[precursor])]
+precursor2<-precursor[idx_noprev_donation]-1
+if(F){
+  ### change some records to test 
+  idx2<-which(data_complete$KeyID[idx_noprev_donation]==data_complete$KeyID[precursor2])
+  data_complete[precursor2[idx2[1:10]],]<-data_complete[(precursor[idx_noprev_donation])[idx2[1:10]],]
+  View(data_complete[data_complete$KeyID %in% data_complete$KeyID[idx_noprev_donation[idx2][1:10]],])
+}
+precisvalid<-data_complete$KeyID[idx_noprev_donation] == data_complete$KeyID[precursor2]
+precisHb<-!is.na(data_complete$Hb[precursor2])
+sum(precisvalid) # previous record was from the same donor
+sum(precisHb) # previous record had a valid Hb
+precisset<-precisvalid & precisHb # reference is set if both conditions are satisfied
+sum(precisset)
+i<-0
+while ( sum(!precisvalid | precisset)!=length(precursor2)){ # loop until all previous records found are either invalid or contain an Hb value 
+  i<-i+1
+  precursor2[!precisset & precisvalid]<-precursor2[!precisset & precisvalid]-1
+  precisvalid[!precisset & precisvalid]<-(data_complete$KeyID[idx_noprev_donation] == data_complete$KeyID[precursor2])[!precisset & precisvalid]
+  precisHb[!precisset & precisvalid]<-!is.na(data_complete$Hb[precursor2])[!precisset & precisvalid]
+  precisset[!precisset & precisvalid]<-(precisvalid & precisHb)[!precisset & precisvalid]
+}
+paste("Nr of loops to find a valid Hb:",i)
+precursor[idx_noprev_donation]<-precursor2
+precursor[idx_noprev_donation][!precisset]<-NA
+sum(is.na(precursor))
+
+# also make a column for the previous Hb value
+data_complete$prevHb<-NA
+data_complete$prevHb<-data_complete$Hb[precursor]
+data_complete$prevHb[data_complete$KeyID != data_complete$KeyID[precursor]]<-NA
+
+data_complete$prevHb_prescr<-NA
+data_complete$prevHb_prescr<-data_complete$pre_Hb[precursor]
+data_complete$prevHb_prescr[data_complete$KeyID != data_complete$KeyID[precursor]]<-NA
+
+# calculate time since last donation
+data_complete$dt<-NA
+data_complete$dt<-as.numeric(data_complete$DonDate-data_complete$DonDate[precursor])
+data_complete$dt[data_complete$KeyID != data_complete$KeyID[precursor]]<-NA
+
+# calculate log10 of the time difference
+data_complete$ldt<-log10(data_complete$dt)
+
+# calculate change in Hb from previous donation
+data_complete$dHb<-NA
+data_complete$dHb<-data_complete$Hb-data_complete$prevHb
+
+data_complete$dHb_prescr <- NA
+data_complete$dHb_prescr <- data_complete$pre_Hb-data_complete$prevHb
+
+#association for females:
+#select all females with donations above the cut off value
+self<-which(data_complete$Sex=="F" & data_complete$dt>=intervaltoshow[1] & data_complete$prevHb>dtf)
+linfitf_notdeferred<-lm(dHb~ldt, data=data_complete[self,])
+summary(linfitf_notdeferred)
+tosave<-append(tosave, list(coeff_notdeferred=c(linfitf_notdeferred$coefficients, length(self), sd(linfitf_notdeferred$residuals))))
+
+#select all females with donations below the cut off value and the capillary follow up measurement
+self<-which(data_complete$Sex=="F" & data_complete$dt>=intervaltoshow[1] & data_complete$prevHb<dtf & !is.na(data_complete$pre_Hb))
+linfitf_deferred_capillary<-lm(dHb_prescr~ldt, data=data_complete[self,])
+summary(linfitf_deferred_capillary)
+tosave<-append(tosave, list(coeff_deferred_capillary=c(linfitf_deferred_capillary$coefficients, length(self), sd(linfitf_deferred_capillary$residuals))))
+
+#select all females with donations below the cut off value and the venous follow up measurement
+self<-which(data_complete$Sex=="F" & data_complete$dt>=intervaltoshow[1] & data_complete$prevHb<dtf)
+linfitf_deferred_venous<-lm(dHb~ldt, data=data_complete[self,])
+summary(linfitf_deferred_venous)
+tosave<-append(tosave, list(coeff_deferred_venous=c(linfitf_deferred_venous$coefficients, length(self), sd(linfitf_deferred_venous$residuals))))
+
+#associations for males
+#select all males with donations above the cut off value
+selm<-which(data_complete$Sex=="M" & data_complete$dt>=intervaltoshow[1] & data_complete$prevHb>dtf)
+linfitm_notdeferred<-lm(dHb~ldt, data=data_complete[selm,])
+summary(linfitm_notdeferred)
+tosave<-append(tosave, list(coefm_notdeferred=c(linfitm_notdeferred$coefficients, length(selm), sd(linfitm_notdeferred$residuals))))
+
+#select all males with donations below the cut off value and the capillary follow up measurement
+selm<-which(data_complete$Sex=="M" & data_complete$dt>=intervaltoshow[1] & data_complete$prevHb<dtf & !is.na(data_complete$pre_Hb))
+linfitm_deferred_capillary<-lm(dHb_prescr~ldt, data=data_complete[selm,])
+summary(linfitm_deferred_capillary)
+tosave<-append(tosave, list(coefm_deferred_capillary=c(linfitm_deferred_capillary$coefficients, length(selm), sd(linfitm_deferred_capillary$residuals))))
+
+#select all males with donations below the cut off value and the venous follow up measurement
+selm<-which(data_complete$Sex=="M" & data_complete$dt>=intervaltoshow[1] & data_complete$prevHb<dtf)
+linfitm_deferred_venous<-lm(dHb~ldt, data=data_complete[selm,])
+summary(linfitm_deferred_venous)
+tosave<-append(tosave, list(coefm_deferred_venous=c(linfitm_deferred_venous$coefficients, length(selm), sd(linfitm_deferred_venous$residuals))))
+
+#save the dataset with the prescreening
+data_prescreening <- data_complete[!is.na(data_complete$pre_Hb),]
+
+data_complete$Hbfilled<-data_complete$Hb
+data_complete$Hbfilled[is.na(data_complete$Hbfilled)]<-data_complete$pre_Hb[is.na(data_complete$Hbfilled)]
+data_complete <- data_complete %>%
+  group_by(KeyID) %>%
+  mutate(cum_Hb= cumsum(Hbfilled)) %>% ungroup() %>% mutate(meanHb = cum_Hb/numdons)
+
+idx<-1:nrow(data_complete)
+precursor<-idx-1
+precursor[1]<-nrow(data_complete)
+
+data_complete$prevMeanHb<-NA
+data_complete$prevMeanHb<-data_complete$meanHb[precursor]
+data_complete$prevMeanHb[data_complete$KeyID != data_complete$KeyID[precursor]]<-NA
+
+data_complete$prevMeanHb[is.na(data_complete$prevMeanHb)] <- data_complete$meanHb[is.na(data_complete$prevMeanHb)]
+
+###########################################################
+# Analyse capillary variation 
+###########################################################
+
+data_cap<-data_complete[!is.na(data_complete$pre_Hb),]
+data_cap$cap_dHb<-data_cap$pre_Hb-data_cap$prevMeanHb
+(sd_cap<-sd(data_cap$cap_dHb))
+(sd_capf<-sd(data_cap$cap_dHb[data_cap$Sex=="F"]))
+(sd_capm<-sd(data_cap$cap_dHb[data_cap$Sex=="M"]))
+
+tosave<-append(tosave, list(sd_cap=c(sd_cap, sd_capf, sd_capm)))
+
+qqPlot(data_cap$cap_dHb, main="Q-Q plot of residuals capillary measurement", ylab="residuals [g/L]" )
+qqPlot(data_cap$cap_dHb[data_cap$Sex=="F"], main="Q-Q plot of residuals capillary measurement", ylab="residuals [g/L]" )
+qqPlot(data_cap$cap_dHb[data_cap$Sex=="M"], main="Q-Q plot of residuals capillary measurement", ylab="residuals [g/L]" )
+
+quantile(data_cap$cap_dHb, c(.01,.99))
+plot(ecdf(data_cap$cap_dHb[data_cap$cap_dHb<75 & data_cap$cap_dHb>-75]))
+
+qqPlot(data_cap$cap_dHb[data_cap$Sex=="F" & data_cap$cap_dHb<75 & data_cap$cap_dHb>-75], main="Q-Q plot of residuals capillary measurement", ylab="residuals [g/L]" )
+qqPlot(data_cap$cap_dHb[data_cap$Sex=="M" & data_cap$cap_dHb<75 & data_cap$cap_dHb>-75], main="Q-Q plot of residuals capillary measurement", ylab="residuals [g/L]" )
+
+data_cap <- data_cap[data_cap$cap_dHb<75 & data_cap$cap_dHb>-75,]
+(sd_cap<-sd(data_cap$cap_dHb))
+(sd_capf<-sd(data_cap$cap_dHb[data_cap$Sex=="F"]))
+(sd_capm<-sd(data_cap$cap_dHb[data_cap$Sex=="M"]))
+
+tosave<-append(tosave, list(sd_cap_outliersremoved=c(sd_cap, sd_capf, sd_capm)))
+
+###########################################################
+# Create analysis file 
 ###########################################################
 # the analysis file contains per donor
 # 1) KeyID
@@ -318,106 +579,58 @@ tosave<-append(tosave, list(sdm=c(mean(data$Hb[selm]), sd(data$Hb[selm]),
 #     Nr of measurements that were above the threshold value (HbOki)
 # the new dataset is called datt
 
-if(!file.exists("donations_analysis_data.RDS")){ 
+data <- data_complete[!is.na(data_complete$Hb),]
 
-  # tabulate correct and incorrect donations
-  data$HbOk<-1-data$def
-  table(data$HbOk, data$Sex )
-  data$Hbres<-1
-  
-  # create dataset with first donations
-  dats<-data[data$numdons<=1,]
-  dat1<-dats[ ,c("KeyID", "Sex", "HbOk", "Hb", "Hbres")]
-  colnames(dat1)<-c("KeyID", "Sex", "HbOk1", "MeanHb1", "nHb1")
-  dat1<-cbind(dat1,dat1$MeanHb1)
-  colnames(dat1)<-c("KeyID", "Sex", "HbOk1", "MeanHb1", "nHb1", "Hb1")
-  dat1<-dat1[,c("KeyID", "Sex", "Hb1", "MeanHb1", "nHb1", "HbOk1")]
-  
-  # create dataset with information on second donations
-  dats<-data[data$numdons<=2,]
-  dat2<-aggregate(dats$HbOk, by=list(dats$KeyID), sum)
-  colnames(dat2)<-c("KeyID", "HbOk2")
-  datm<-aggregate(dats$Hb, by=list(dats$KeyID), mean, na.rm=T)
-  colnames(datm)<-c("KeyID", "MeanHb2")
-  datn<-aggregate(dats$Hbres, by=list(dats$KeyID), sum)
-  colnames(datn)<-c("KeyID", "nHb2")
-  dat2<-merge(dat2, datm, by="KeyID")
-  dat2<-merge(dat2, datn, by="KeyID")
-  dats<-dats[dats$numdons==2, c("KeyID", "Hb")]
-  colnames(dats)<-c("KeyID", "Hb2")
-  dat2<-merge(dat2, dats, by="KeyID", all=T)
-  dat2<-dat2[,c("KeyID", "Hb2", "MeanHb2", "nHb2", "HbOk2")]
+#make a column for the previous Mean Hb
+idx<-1:nrow(data)
+precursor<-idx-1
+precursor[1]<-nrow(data)
 
-  # merge these files
-  datt<-merge(dat1,dat2, by="KeyID")
-  rm(dat1,dat2)
-  
-  # Now repeat this last step for all subsequent donations
-  for (i in 3:maxDons) {
-    print(paste("Add data for donation nr",i))
-    #dats<-data[data$numdons<=2,]
-    eval(parse(text=paste0("dats<-data[data$numdons<=",i,",]")))
-    #dat2<-aggregate(dats$HbOk, by=list(dats$KeyID), sum)
-    dat<-aggregate(dats$HbOk, by=list(dats$KeyID), sum)
-    #colnames(dat2)<-c("KeyID", "HbOk2")
-    eval(parse(text=paste0("colnames(dat)<-c(\"KeyID\", \"HbOk",i,"\")")))
-    #datm<-aggregate(dats$Hb, by=list(dats$KeyID), mean)
-    eval(parse(text=paste0("datm<-aggregate(dats$Hb, by=list(dats$KeyID), mean)")))
-    #colnames(datm)<-c("KeyID", "MeanHb2")
-    eval(parse(text=paste0("colnames(datm)<-c(\"KeyID\", \"MeanHb",i,"\")")))
-    #datn<-aggregate(dats$Hbres, by=list(dats$KeyID), sum)
-    eval(parse(text=paste0("datn<-aggregate(dats$Hbres, by=list(dats$KeyID), sum)")))
-    #colnames(datn)<-c("KeyID", "nHb2")
-    eval(parse(text=paste0("colnames(datn)<-c(\"KeyID\", \"nHb",i,"\")")))
-    #dat2<-merge(dat2, datm, by="KeyID")
-    dat<-merge(dat, datm, by="KeyID")
-    #dat2<-merge(dat2, datn, by="KeyID")
-    dat<-merge(dat, datn, by="KeyID")
-    #dats<-dats[dats$numdons==2, c("KeyID", "Hb")]
-    eval(parse(text=paste0("dats<-dats[dats$numdons==",i,", c(\"KeyID\", \"Hb\")]")))
-    #colnames(dats)<-c("KeyID", "Hb2")
-    eval(parse(text=paste0("colnames(dats)<-c(\"KeyID\", \"Hb",i,"\")")))
-    #dat2<-merge(dat2, dats, by="KeyID", all=T)
-    dat<-merge(dat, dats, by="KeyID", all=T)
-    #dat2<-dat2[,c("KeyID", "Hb2", "MeanHb2", "nHb2", "HbOk2")]
-    eval(parse(text=paste0("dat<-dat[,c(\"KeyID\", \"Hb",i,"\", \"MeanHb",i,"\", \"nHb",i,"\", \"HbOk",i,"\")]")))
-    
-    # Now merge the data for this number of donations to the total dataset
-    datt<-merge(datt,dat, by="KeyID")
-  }
-
-  # remove intermediate datasets
-  rm(list=c("dat", "datm", "datn", "dats"))
-  
-  # save file if doesn't exist (wich was already checked)
-  if (!file.exists("donations_analysis_data.RDS")) saveRDS(datt, file="donations_analysis_data.RDS")
-
-} else {
-  # if the analysis file already exists, open it
-  datt<-readRDS("donations_analysis_data.RDS")
-}
+# View(data[data$KeyID==30943,])
+# View(data_complete[data_complete$KeyID==30943,])
 
 ############################
 # Analyse deferrals
 ############################
 
-# standard deviation of individual measurements
+# standard deviation of individual venous measurements
 (malesd<-sd(linfitm$residuals)/sqrt(2))
 (femalesd<-sd(linfitf$residuals)/sqrt(2))
 
-# Calculate (un)acceptable deviation per sex
-datt$d<-qnorm(cutoffperc)*femalesd
-datt$d[datt$Sex=="M"]<-qnorm(cutoffperc)*malesd
+data$d<-qnorm(cutoffperc)*femalesd
+data$d[data$Sex=="M"]<-qnorm(cutoffperc)*malesd
 # set thresholds per gender
-datt$th<-dtf
-datt$th[datt$Sex=="M"]<-dtm
-table(datt$th-datt$d, datt$Sex)
-# 95% Thresholds: 109.619737077851 (F) 119.111266716166 (M)
-# 99% Thresholds: 103.247400641088 (F) 112.528261305199 (M)
+data$th<-dtf
+data$th[data$Sex=="M"]<-dtm
+table(data$th-data$d, data$Sex)
 
-# attach the datt file
-while ("datt" %in% search()) detach(datt)
-attach(datt)
+data_complete$d <- qnorm(cutoffperc)*femalesd
+data_complete$d[data_complete$Sex=="M"]<-qnorm(cutoffperc)*malesd
+data_complete$th<-dtf
+data_complete$th[data_complete$Sex=="M"]<-dtm
+table(data_complete$th-data_complete$d, data_complete$Sex)
+
+#for capillary measurements
+data_complete$diff_prehb_mean <- data_complete$pre_Hb - data_complete$prevMeanHb
+
+(malessd_pre <- sd(data_complete$diff_prehb_mean[data_complete$Sex=="M"],na.rm=T))
+(malessd_pre <- sd_capm)
+(femalessd_pre <- sd(data_complete$diff_prehb_mean[data_complete$Sex=="F"],na.rm=T))
+(femalessd_pre <- sd_capf)
+
+# of berekend op basis van verschil met vorig meting
+sd(data_cap$dHb_prescr, na.rm = T)
+sd_capm
+(malessd_pre <- sqrt(var(data_cap$dHb_prescr[data_cap$Sex=="M" & !is.na(data_cap$dHb_prescr)])-malesd^2))
+sd_capf
+(femalessd_pre <- sqrt(var(data_cap$dHb_prescr[data_cap$Sex=="F" & !is.na(data_cap$dHb_prescr)])-femalesd^2))
+
+data_complete$pre_d<-NA
+data_complete$pre_d[data_complete$Sex=="M"] <- qnorm(cutoffperc)*malessd_pre
+data_complete$pre_d[data_complete$Sex=="F"] <- qnorm(cutoffperc)*femalessd_pre
+
+tosave<-append(tosave, list(malessd_pre=malessd_pre))
+tosave<-append(tosave, list(femalessd_pre=femalessd_pre))
 
 ###################################################################
 # now analyse what the new donor deferral policy would achieve 
@@ -427,66 +640,91 @@ attach(datt)
 # the items stored in each row is explained below
 outputsummarytable<-as.data.frame(matrix(0,maxDons,8))
 colnames(outputsummarytable)<-c("Deferred", "Non-deferred", "ShouldNotDeferred", "ShouldNotDonate", 
-        "Should_not_have_donated","Missed_by_stopped_donor", "ShouldNotDeferred2", "RequiresReview")
+                                "Should_not_have_donated","Missed_by_stopped_donor", "ShouldNotDeferred2", "RequiresReview")
 
-stopped<-rep(F, length(Hb1)) # indicator for whether a donors has stopped or not
-                             # is set when the mean Hb level was demonstrably below 
-                             # the eligibility threshold at previous donation 
-stopped2<-rep(F, length(Hb1)) # indicator for whether a donors has stopped or not
-                              # is set when the mean Hb level is below the 
-                              # eligibility threshold at previous donation
-stopafter<-3 # stop donating after significant evidence only after stopafter donations have been made
+stopped_KeyID <- NA
+stopped2_KeyID <- NA
+stopafter <- 3
+maxDons <- max(data$numdons)
 
-for (i in 1:maxDons ){
-  
+for(i in 1:maxDons){
+  calculate <- data[data$numdons==i,]
   # 1 - Deferred donors
   # The number of donors deferred at step i are those with a Hb value that is  
   # below the deferral threshold
-  eval(parse(text=paste0("outputsummarytable[",i,", 1]<-sum(!is.na(Hb",i,") & Hb",i,"<th)")))
+  outputsummarytable[i,1] <- sum(!is.na(calculate$Hb) & calculate$Hb<calculate$th)
+  
   
   # 2 - non-Deferred donors
   # The number of donors not deferred at step i are those with a Hb value that   
   # is equal or larger than the deferral threshold
-  eval(parse(text=paste0("outputsummarytable[",i,", 2]<-sum(!is.na(Hb",i,") & Hb",i,">=th)")))
+  outputsummarytable[i,2] <- sum(!is.na(calculate$Hb) & calculate$Hb >= calculate$th)
   
   # 3 - Donors that should not have been deferred as the Hb deviation relative to
   #     their mean Hb value does not provide sufficient evidence against donation
   # only count events from second donation onwards
-  if(i>1) eval(parse(text=paste0("outputsummarytable[",i,", 3]<-sum(!is.na(Hb",i,") & Hb",i,"<th & Hb",i,">=MeanHb",i-1,"-d)")))
-
+  if(i>1) outputsummarytable[i,3] <- sum(!is.na(calculate$Hb) & calculate$Hb < calculate$th & calculate$Hb >= calculate$prevMeanHb-calculate$d, na.rm=T)
+  
   # 4 - Donors that should not donate as their Hb is demonstrably below the eligibility threshold
-  eval(parse(text=paste0("outputsummarytable[",i,",4]<-sum(!is.na(Hb",i,") & MeanHb",i,"<th-d/sqrt(",i,"))")))
+  outputsummarytable[i,4]<-sum(!is.na(calculate$Hb) & calculate$meanHb < calculate$th - calculate$d/sqrt(i), na.rm=T)
   
   # 5 - Donors that should not have donated
-  if(i>1) eval(parse(text=paste0("outputsummarytable[",i,",5]<-sum(!is.na(Hb",i,") & MeanHb",i-1,"<th-d/sqrt(",i-1,") & Hb",i,">=th)")))
+  outputsummarytable[i,5] <- sum(!is.na(calculate$Hb) & calculate$prevMeanHb < calculate$th-calculate$d/sqrt(i-1) & calculate$Hb >= calculate$th, na.rm=T)
   
-  # set new index for (previously) stopped donors
-  # index stopped indicates that the mean Hb level was demonstrably below the eligibility threshold at previous donation 
-  if (i>stopafter) eval(parse(text=paste0("stopped <-stopped  | (!is.na(Hb",i,") & MeanHb",i-1,"<th-d/sqrt(",i-1,"))")))
+  if(i>stopafter) stopped_KeyID <- c(stopped_KeyID, calculate$KeyID[!is.na(calculate$Hb) & calculate$prevMeanHb < calculate$th - calculate$d/sqrt(i-1)])
   # index stopped2 indicates that the mean Hb level is below the eligibility threshold at previous donation
-  if (i>stopafter) eval(parse(text=paste0("stopped2<-stopped2 | (!is.na(Hb",i,") & MeanHb",i-1,"<th)")))
-
+  if (i>stopafter) stopped2_KeyID <- c(stopped2_KeyID, calculate$KeyID[!is.na(calculate$Hb) & calculate$prevMeanHb < calculate$th])
+  
   # 6 - donations missed as a result of new deferral rule
-  eval(parse(text=paste0("outputsummarytable[",i,",6]<-sum(!is.na(Hb",i,") & Hb",i,">=th & stopped)")))
+  if(i>stopafter) outputsummarytable[i,6] <- sum(!is.na(calculate$Hb) & calculate$Hb >= calculate$th & calculate$KeyID %in% stopped_KeyID, na.rm=T)
   
   # 7 - Donors that should not have been deferred as the Hb deviation relative to 
   #     the absolute Hb threshold is insufficient (see also evaluation 3 above)
   # this basically presumes that anyone with a Hb level over th-d may donate
-  eval(parse(text=        paste0("outputsummarytable[",i,", 7]<-sum(!is.na(Hb",i,") & Hb",i,"<th & Hb",i,">=th-d)")))
+  outputsummarytable[i,7]<- sum(!is.na(calculate$Hb) & calculate$Hb< calculate$th & calculate$Hb>=calculate$th-calculate$d, na.rm=T)
   
   # 8 - Identified as outlier, but not deferred
-  if(i>1) eval(parse(text=paste0("outputsummarytable[",i,",8]<-sum(!is.na(Hb",i,") & Hb",i,"< MeanHb",i-1,"-d & Hb",i,">=th)")))
+  if(i>1) outputsummarytable[i,8] <- sum(!is.na(calculate$Hb) & calculate$Hb < calculate$prevMeanHb - calculate$d & calculate$Hb >= calculate$th, na.rm=T)
 }
-sum(stopped) 
-sum(stopped2)
 
-sum(stopped)/length(stopped) # proportion of stopped donors
-sum(stopped2)/length(stopped) # proportion of stopped2 donors
+length(unique(stopped_KeyID)) 
+length(unique(stopped2_KeyID))
+
+
+length(unique(stopped_KeyID))/length(stopped_KeyID) #proportion of stopped donors
+length(unique(stopped2_KeyID))/length(stopped2_KeyID) #proportion of stopped2 donors
 
 outputsummarytable$defprop<-outputsummarytable$Deferred/(outputsummarytable$Deferred+outputsummarytable$`Non-deferred`)
 outputsummarytable$nondefprop<-outputsummarytable$ShouldNotDeferred/outputsummarytable$Deferred
 outputsummarytable
 tosave<-append(tosave, list(outputsummarytable=outputsummarytable))
+
+########################################
+# analysis of pre-donation screenings
+########################################
+
+outputtableprescreening <- as.data.frame(matrix(0,maxDons,4))
+colnames(outputtableprescreening) <- c("Pre-donation screenings conducted", "Deferral during pre-donation screening", "Should not deferred", "Should not donate")
+
+maxDons <- max(data_complete$numdons)
+
+for(i in 1:maxDons){
+  calculate <- data_complete[data_complete$numdons==i,]
+  #1 - number of pre-screenings conducted
+  outputtableprescreening[i,1] <- sum(!is.na(calculate$pre_Hb))
+  
+  #2 - number of pre-screenings that were a deferral
+  outputtableprescreening[i,2] <- sum(calculate$predef==1)
+  
+  #3 - deferrals at pre-screening that were not necessary, because the pre-screening Hb was within expected variation of the mean
+  outputtableprescreening[i,3] <- sum(!is.na(calculate$pre_Hb) & calculate$pre_Hb < calculate$th & calculate$pre_Hb >= calculate$prevMeanHb-calculate$pre_d, na.rm=T)
+  
+  #4 - donations done after the pre-screening measurment, that should not have been done because the pre-screening Hb was not sufficient
+  outputtableprescreening[i,4]<- sum(!is.na(calculate$pre_Hb) & ((calculate$pre_Hb + calculate$prevMeanHb)/i) < calculate$th - calculate$pre_d/sqrt(i), na.rm=T)
+}
+
+tosave<-append(tosave, list(outputtableprescreening=outputtableprescreening))
+
 
 ###################################################################
 # Write tosave data to datafile
@@ -537,6 +775,8 @@ sms3[8]/totn3   # Reviewed for low relative Hb
 #######################################################
 # plot some individual donor profiles
 #######################################################
+data_complete <- data_complete %>% group_by(KeyID) %>% mutate(totaldon = n())
+data <- data %>% group_by(KeyID) %>% mutate(totaldon = n())
 # for internal use only
 # note that the number of 
 
@@ -547,14 +787,14 @@ maxplots<-3  # USER: Set the maximum number of graphs to plot in row/column of a
 ###########################
 # Create a selection of donors that should have been deferred at donation 'def' but did donate 
 # at least n times
-def<-5 # to be set by the USER 
-n<-7   # to be set by the USER 
+def<-6 # to be set by the USER 
+n<-9  # to be set by the USER 
 # Nr of donors that fit the criterion
-eval(parse(text=paste0("sum(MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th & !is.na(Hb",n,"))")))
-if (eval(parse(text=paste0("sum(MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th & !is.na(Hb",n,"))")))>0) {
+eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb) & data$totaldon >",n,", na.rm=T)")))
+if (eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb)  & data$totaldon >",n,", na.rm=T)")))>0) {
   # set selection of donors
-  eval(parse(text=paste0("selID<-KeyID[MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th & !is.na(Hb",n,")]")))
-  print(selID)
+  eval(parse(text=paste0("selID<-data$KeyID[data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb)  & data$totaldon >",n,"]")))
+  print(selID[!is.na(selID)])
   # plot the donor profile in a matrix
   if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at donation ",def," minimum of ",n," donations.pdf")))
   plotmatrix(selID,maxplots=maxplots, ylim=c(70,160),)
@@ -562,13 +802,16 @@ if (eval(parse(text=paste0("sum(MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th 
 }
 ###########################
 # select donors with at least ndef deferrals at donation n and an average Hb level above the deferral threshold
+data <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
+data_complete <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
+
 n<-29     # to be set by the USER 
 ndef<-8  # to be set by the USER 
 # Nr of donors selected
-eval(parse(text=paste0("sum( nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th & !is.na(Hb",n,"))")))
-if(eval(parse(text=paste0("sum( nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th & !is.na(Hb",n,"))")))>0){
+eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))")))
+if(eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))")))>0){
   # set selection of donors
-  eval(parse(text=paste0("selID<-KeyID[nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th& !is.na(Hb",n,")]")))
+  eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
   if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n,", but with an average Hb level above the threshold.pdf")))
@@ -581,10 +824,10 @@ if(eval(parse(text=paste0("sum( nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th &
 n<-30    # to be set by the USER 
 delta<-5 # to be set by the USER 
 # Nr of donors selected
-eval(parse(text=paste0("sum(MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n,"))")))
-if (eval(parse(text=paste0("sum(MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n,"))")))>0){
+eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))")))
+if (eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))")))>0){
   # set selection of donors
-  eval(parse(text=paste0("selID<-KeyID[MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n,")]")))
+  eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
   if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n," but with an average of ",delta," above the threshold.pdf")))
@@ -593,3 +836,4 @@ if (eval(parse(text=paste0("sum(MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n
   # plot another subset
   # plotmatrix(selID, 2, seedvalue=2)
 }
+
