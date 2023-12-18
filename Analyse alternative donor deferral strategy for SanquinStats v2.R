@@ -12,7 +12,7 @@ setwd(this.dir()) # set the active working directory to the directory of this fi
 getwd()
 
 # Set code date 
-maincodedatestamp<-"20231004"
+maincodedatestamp<-"20231218"
 
 #############################
 # Define user input
@@ -69,6 +69,7 @@ library("lubridate") # required for extracting year info from a date variable
 library("Hmisc")     # to enable calculating splitpoints
 library("fitdistrplus") # to fit and plot normal distribution fits to the data
 library("stringr")   # to manipulate strings
+library("dplyr")     # data wrangling
 
 # restore old color palette
 palette("R3")
@@ -217,6 +218,7 @@ legend("topright", c("Males", "Females"), pch=c(1,2), lty=c(1,1), col=c("blue","
 if(plot_to_pdf) dev.off()
 
 if(plot_to_pdf) pdf(file="Distribution_of_donation_counts.pdf")
+
 # plot distribution of number of donations per sex
 with(data[data$Sex=="F",], plot(as.numeric(table(numdons)), type="l", col="red", xlim=c(1,maxDons), log='y',
                                 xlab="Number of donations", ylab="number of donors"))
@@ -324,76 +326,10 @@ tosave<-append(tosave, list(sdm=c(mean(data$Hb[selm]), sd(data$Hb[selm]),
 # the new dataset is called datt
 
 if(!file.exists("donations_analysis_data.RDS")){ 
-
-  # tabulate correct and incorrect donations
-  data$HbOk<-1-data$def
-  table(data$HbOk, data$Sex )
-  data$Hbres<-1
   
-  # create dataset with first donations
-  dats<-data[data$numdons<=1,]
-  dat1<-dats[ ,c("KeyID", "Sex", "HbOk", "Hb", "Hbres")]
-  colnames(dat1)<-c("KeyID", "Sex", "HbOk1", "MeanHb1", "nHb1")
-  dat1<-cbind(dat1,dat1$MeanHb1)
-  colnames(dat1)<-c("KeyID", "Sex", "HbOk1", "MeanHb1", "nHb1", "Hb1")
-  dat1<-dat1[,c("KeyID", "Sex", "Hb1", "MeanHb1", "nHb1", "HbOk1")]
-  
-  # create dataset with information on second donations
-  dats<-data[data$numdons<=2,]
-  dat2<-aggregate(dats$HbOk, by=list(dats$KeyID), sum)
-  colnames(dat2)<-c("KeyID", "HbOk2")
-  datm<-aggregate(dats$Hb, by=list(dats$KeyID), mean, na.rm=T)
-  colnames(datm)<-c("KeyID", "MeanHb2")
-  datn<-aggregate(dats$Hbres, by=list(dats$KeyID), sum)
-  colnames(datn)<-c("KeyID", "nHb2")
-  dat2<-merge(dat2, datm, by="KeyID")
-  dat2<-merge(dat2, datn, by="KeyID")
-  dats<-dats[dats$numdons==2, c("KeyID", "Hb")]
-  colnames(dats)<-c("KeyID", "Hb2")
-  dat2<-merge(dat2, dats, by="KeyID", all=T)
-  dat2<-dat2[,c("KeyID", "Hb2", "MeanHb2", "nHb2", "HbOk2")]
-
-  # merge these files
-  datt<-merge(dat1,dat2, by="KeyID")
-  rm(dat1,dat2)
-  
-  # Now repeat this last step for all subsequent donations
-  for (i in 3:maxDons) {
-    print(paste("Add data for donation nr",i))
-    #dats<-data[data$numdons<=2,]
-    eval(parse(text=paste0("dats<-data[data$numdons<=",i,",]")))
-    #dat2<-aggregate(dats$HbOk, by=list(dats$KeyID), sum)
-    dat<-aggregate(dats$HbOk, by=list(dats$KeyID), sum)
-    #colnames(dat2)<-c("KeyID", "HbOk2")
-    eval(parse(text=paste0("colnames(dat)<-c(\"KeyID\", \"HbOk",i,"\")")))
-    #datm<-aggregate(dats$Hb, by=list(dats$KeyID), mean)
-    eval(parse(text=paste0("datm<-aggregate(dats$Hb, by=list(dats$KeyID), mean)")))
-    #colnames(datm)<-c("KeyID", "MeanHb2")
-    eval(parse(text=paste0("colnames(datm)<-c(\"KeyID\", \"MeanHb",i,"\")")))
-    #datn<-aggregate(dats$Hbres, by=list(dats$KeyID), sum)
-    eval(parse(text=paste0("datn<-aggregate(dats$Hbres, by=list(dats$KeyID), sum)")))
-    #colnames(datn)<-c("KeyID", "nHb2")
-    eval(parse(text=paste0("colnames(datn)<-c(\"KeyID\", \"nHb",i,"\")")))
-    #dat2<-merge(dat2, datm, by="KeyID")
-    dat<-merge(dat, datm, by="KeyID")
-    #dat2<-merge(dat2, datn, by="KeyID")
-    dat<-merge(dat, datn, by="KeyID")
-    #dats<-dats[dats$numdons==2, c("KeyID", "Hb")]
-    eval(parse(text=paste0("dats<-dats[dats$numdons==",i,", c(\"KeyID\", \"Hb\")]")))
-    #colnames(dats)<-c("KeyID", "Hb2")
-    eval(parse(text=paste0("colnames(dats)<-c(\"KeyID\", \"Hb",i,"\")")))
-    #dat2<-merge(dat2, dats, by="KeyID", all=T)
-    dat<-merge(dat, dats, by="KeyID", all=T)
-    #dat2<-dat2[,c("KeyID", "Hb2", "MeanHb2", "nHb2", "HbOk2")]
-    eval(parse(text=paste0("dat<-dat[,c(\"KeyID\", \"Hb",i,"\", \"MeanHb",i,"\", \"nHb",i,"\", \"HbOk",i,"\")]")))
-    
-    # Now merge the data for this number of donations to the total dataset
-    datt<-merge(datt,dat, by="KeyID")
-  }
-
-  # remove intermediate datasets
-  rm(list=c("dat", "datm", "datn", "dats"))
-  
+  data <- data %>%
+    group_by(KeyID) %>%
+    mutate(cum_Hb= cumsum(Hb)) %>% ungroup() %>% mutate(meanHb = cum_Hb/numdons)
   # save file if doesn't exist (wich was already checked)
   if (!file.exists("donations_analysis_data.RDS")) saveRDS(datt, file="donations_analysis_data.RDS")
 
@@ -401,6 +337,17 @@ if(!file.exists("donations_analysis_data.RDS")){
   # if the analysis file already exists, open it
   datt<-readRDS("donations_analysis_data.RDS")
 }
+
+#make a column for the previous Mean Hb
+idx<-1:nrow(data)
+precursor<-idx-1
+precursor[1]<-nrow(data)
+
+data$prevMeanHb<-NA
+data$prevMeanHb<-data$meanHb[precursor]
+data$prevMeanHb[data$KeyID != data$KeyID[precursor]]<-NA
+
+data$prevMeanHb[is.na(data$prevMeanHb)] <- data$meanHb[is.na(data$prevMeanHb)]
 
 ############################
 # Analyse deferrals
@@ -411,12 +358,12 @@ if(!file.exists("donations_analysis_data.RDS")){
 (femalesd<-sd(linfitf$residuals)/sqrt(2))
 
 # Calculate (un)acceptable deviation per sex
-datt$d<-qnorm(cutoffperc)*femalesd
-datt$d[datt$Sex=="M"]<-qnorm(cutoffperc)*malesd
+data$d<-qnorm(cutoffperc)*femalesd
+data$d[data$Sex=="M"]<-qnorm(cutoffperc)*malesd
 # set thresholds per gender
-datt$th<-dtf
-datt$th[datt$Sex=="M"]<-dtm
-table(datt$th-datt$d, datt$Sex)
+data$th<-dtf
+data$th[data$Sex=="M"]<-dtm
+table(data$th-data$d, data$Sex)
 
 ###################################################################
 # now analyse what the new donor deferral policy would achieve 
@@ -424,33 +371,26 @@ table(datt$th-datt$d, datt$Sex)
 ###################################################################
 
 # detach potentially attached objects
-while ("datt" %in% search()) detach(datt)
-while ("dattf" %in% search()) detach(dattf)
-while ("dattm" %in% search()) detach(dattm)
-
 # attach the datt file to enable analysis of policy impact
-attach(datt)
-analysisresults<-AnalysePolicyImpact()
+
+analysisresults<-AnalysePolicyImpact(dataframe=dataframeReduce())
 outputsummarytable<-analysisresults$outputsummarytable
 tosave<-append(tosave, list(analysisresults=analysisresults))
-while ("datt" %in% search()) detach(datt)
 
-dattf<-datt[datt$Sex=="F",]
-attach(dattf)
-analysisresults_f<-AnalysePolicyImpact()
+
+dataf<-data[data$Sex=="F",]
+analysisresults_f<-AnalysePolicyImpact(dataframe=dataf)
 tosave<-append(tosave, list(analysisresults_f=analysisresults_f))
-while ("dattf" %in% search()) detach(dattf)
 
-dattm<-datt[datt$Sex=="M",]
-attach(dattm)
-analysisresults_m<-AnalysePolicyImpact()
+
+datam<-data[data$Sex=="M",]
+analysisresults_m<-AnalysePolicyImpact(dataframe=datam)
 tosave<-append(tosave, list(analysisresults_m=analysisresults_m))
-while ("dattm" %in% search()) detach(dattm)
 
 ###################################################################
 # Write tosave data to datafile
 ###################################################################
-saveRDS(tosave, paste0("SavedDeferralData_",Sys.Date(),".RDS"))
+saveRDS(tosave, paste0("SavedDeferralData_",Sys.Date(),"_",cutoffperc,".RDS"))
 
 ###################################################################
 # now calculate various statistics of the updated policy 
@@ -497,25 +437,23 @@ sms3[8]/totn3   # Reviewed for low relative Hb
 # plot some individual donor profiles
 #######################################################
 # FOR INTERNAL USE ONLY
+data <- data %>% group_by(KeyID) %>% mutate(totaldon = n())
 
 maxplots<-3  # USER: Set the maximum number of graphs to plot in row/column of a matrix
 # plotdonorprofile(KeyID[250], leg=T, ylim=c(0,190)) # nice illustration with a range of 10 unnecessary deferrals 
 # plotdonorprofile(KeyID[250], ylim=c(75,210)) # nice illustration with a range of 10 unnecessary deferrals 
 
-# for plotting datt dataset needs to be attached
-attach(datt)
-
 ###########################
 # Create a selection of donors that should have been deferred at donation 'def' but did donate 
 # at least n times
-def<-5 # to be set by the USER 
-n<-7   # to be set by the USER 
+def<-6 # to be set by the USER 
+n<-9  # to be set by the USER 
 # Nr of donors that fit the criterion
-eval(parse(text=paste0("sum(MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th & !is.na(Hb",n,"))")))
-if (eval(parse(text=paste0("sum(MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th & !is.na(Hb",n,"))")))>0) {
+eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb) & data$totaldon >",n,", na.rm=T)")))
+if (eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb)  & data$totaldon >",n,", na.rm=T)")))>0) {
   # set selection of donors
-  eval(parse(text=paste0("selID<-KeyID[MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th & !is.na(Hb",n,")]")))
-  print(selID)
+  eval(parse(text=paste0("selID<-data$KeyID[data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb)  & data$totaldon >",n,"]")))
+  print(selID[!is.na(selID)])
   # plot the donor profile in a matrix
   if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at donation ",def," minimum of ",n," donations.pdf")))
   plotmatrix(selID,maxplots=maxplots, ylim=c(70,160),)
@@ -523,13 +461,16 @@ if (eval(parse(text=paste0("sum(MeanHb",def,"+d/sqrt(",def,")<th & Hb",def,">th 
 }
 ###########################
 # select donors with at least ndef deferrals at donation n and an average Hb level above the deferral threshold
+data <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
+data_complete <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
+
 n<-29     # to be set by the USER 
 ndef<-8  # to be set by the USER 
 # Nr of donors selected
-eval(parse(text=paste0("sum( nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th & !is.na(Hb",n,"))")))
-if(eval(parse(text=paste0("sum( nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th & !is.na(Hb",n,"))")))>0){
+eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))")))
+if(eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))")))>0){
   # set selection of donors
-  eval(parse(text=paste0("selID<-KeyID[nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th& !is.na(Hb",n,")]")))
+  eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
   if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n,", but with an average Hb level above the threshold.pdf")))
@@ -542,10 +483,10 @@ if(eval(parse(text=paste0("sum( nHb",n,"-HbOk",n,">",ndef-1," & MeanHb",n,">th &
 n<-30    # to be set by the USER 
 delta<-5 # to be set by the USER 
 # Nr of donors selected
-eval(parse(text=paste0("sum(MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n,"))")))
-if (eval(parse(text=paste0("sum(MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n,"))")))>0){
+eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))")))
+if (eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))")))>0){
   # set selection of donors
-  eval(parse(text=paste0("selID<-KeyID[MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n,")]")))
+  eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
   if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n," but with an average of ",delta," above the threshold.pdf")))
@@ -554,3 +495,4 @@ if (eval(parse(text=paste0("sum(MeanHb",n,">th+delta & Hb",n,"<th & !is.na(Hb",n
   # plot another subset
   # plotmatrix(selID, 2, seedvalue=2)
 }
+

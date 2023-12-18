@@ -227,9 +227,9 @@ fitHbdistributions<-function(data, nrofquantiles=20) {
   return(list(Hbdistr=Hbdistr, Hbsddistr=Hbsddistr,minsubset=minsubset))
 }
 
-AnalysePolicyImpact<-function(){
+AnalysePolicyImpact<-function(dataframe){
   # function that analyses the policy impact for a dataset datt containing aggregated donation and Hb data per donor per donation
-  
+  dataset <- dataframe
   # define an output array with 8 columns, one row per subsequent donation
   # the items that are stored in per column are explained below
 
@@ -237,62 +237,64 @@ AnalysePolicyImpact<-function(){
   colnames(outputsummarytable)<-c("Deferred", "Non-deferred", "ShouldNotDeferred", "ShouldNotDonate", 
                                   "Should_not_have_donated","Missed_by_stopped_donor", "ShouldNotDeferred2", "RequiresReview")
   
-  stopped<-rep(F, length(Hb1)) # indicator for whether a donors has stopped or not
+  stopped_KeyID <<- NA # indicator for whether a donors has stopped or not
   # is set when the mean Hb level was demonstrably below 
   # the eligibility threshold at previous donation 
-  stopped2<-rep(F, length(Hb1)) # indicator for whether a donors has stopped or not
+  stopped2_KeyID <<- NA # indicator for whether a donors has stopped or not
   # is set when the mean Hb level is below the 
   # eligibility threshold at previous donation
-  stopafter<<-3 # stop donating after significant evidence only after stopafter donations have been made, is required globally
+  sstopafter <<- 3# stop donating after significant evidence only after stopafter donations have been made, is required globally
+  maxDons <<- max(data$numdons)
   
   for (i in 1:maxDons ){
-    
+    calculate <<- dataset[dataset$numdons==i,]
     # 1 - Deferred donors
     # The number of donors deferred at step i are those with a Hb value that is  
     # below the deferral threshold
-    eval(parse(text=paste0("outputsummarytable[",i,", 1]<-sum(!is.na(Hb",i,") & Hb",i,"<th)")))
+    outputsummarytable[i,1] <- sum(!is.na(calculate$Hb) & calculate$Hb<calculate$th)
     
     # 2 - non-Deferred donors
     # The number of donors not deferred at step i are those with a Hb value that   
     # is equal or larger than the deferral threshold
-    eval(parse(text=paste0("outputsummarytable[",i,", 2]<-sum(!is.na(Hb",i,") & Hb",i,">=th)")))
+    outputsummarytable[i,2] <- sum(!is.na(calculate$Hb) & calculate$Hb >= calculate$th)
     
     # 3 - Donors that should not have been deferred as the Hb deviation relative to
     #     their mean Hb value does not provide sufficient evidence against donation
     # only count events from second donation onwards
-    if(i>1) eval(parse(text=paste0("outputsummarytable[",i,", 3]<-sum(!is.na(Hb",i,") & Hb",i,"<th & Hb",i,">=MeanHb",i-1,"-d)")))
+    if(i>1) outputsummarytable[i,3] <- sum(!is.na(calculate$Hb) & calculate$Hb < calculate$th & calculate$Hb >= calculate$prevMeanHb-calculate$d, na.rm=T)
     
     # 4 - Donors that should not donate as their Hb is demonstrably below the eligibility threshold
-    eval(parse(text=paste0("outputsummarytable[",i,",4]<-sum(!is.na(Hb",i,") & MeanHb",i,"<th-d/sqrt(",i,"))")))
+    outputsummarytable[i,4]<-sum(!is.na(calculate$Hb) & calculate$meanHb < calculate$th - calculate$d/sqrt(i), na.rm=T)
     
     # 5 - Donors that should not have donated
-    if(i>1) eval(parse(text=paste0("outputsummarytable[",i,",5]<-sum(!is.na(Hb",i,") & MeanHb",i-1,"<th-d/sqrt(",i-1,") & Hb",i,">=th)")))
+    outputsummarytable[i,5] <- sum(!is.na(calculate$Hb) & calculate$prevMeanHb < calculate$th-calculate$d/sqrt(i-1) & calculate$Hb >= calculate$th, na.rm=T)
     
     # set new index for (previously) stopped donors
     # index stopped indicates that the mean Hb level was demonstrably below the eligibility threshold at previous donation 
-    if (i>stopafter) eval(parse(text=paste0("stopped <-stopped  | (!is.na(Hb",i,") & MeanHb",i-1,"<th-d/sqrt(",i-1,"))")))
+    if(i>stopafter) stopped_KeyID <<- c(stopped_KeyID, calculate$KeyID[!is.na(calculate$Hb) & calculate$prevMeanHb < calculate$th - calculate$d/sqrt(i-1)])
     # index stopped2 indicates that the mean Hb level is below the eligibility threshold at previous donation
-    if (i>stopafter) eval(parse(text=paste0("stopped2<-stopped2 | (!is.na(Hb",i,") & MeanHb",i-1,"<th)")))
+    if (i>stopafter) stopped2_KeyID <<- c(stopped2_KeyID, calculate$KeyID[!is.na(calculate$Hb) & calculate$prevMeanHb < calculate$th])
     
     # 6 - donations missed as a result of new deferral rule
-    eval(parse(text=paste0("outputsummarytable[",i,",6]<-sum(!is.na(Hb",i,") & Hb",i,">=th & stopped)")))
+    if(i>stopafter) outputsummarytable[i,6] <- sum(!is.na(calculate$Hb) & calculate$Hb >= calculate$th & calculate$KeyID %in% stopped_KeyID, na.rm=T)
+    
     
     # 7 - Donors that should not have been deferred as the Hb deviation relative to 
     #     the absolute Hb threshold is insufficient (see also evaluation 3 above)
     # this basically presumes that anyone with a Hb level over th-d may donate
-    eval(parse(text=        paste0("outputsummarytable[",i,", 7]<-sum(!is.na(Hb",i,") & Hb",i,"<th & Hb",i,">=th-d)")))
-    
+    outputsummarytable[i,7]<- sum(!is.na(calculate$Hb) & calculate$Hb< calculate$th & calculate$Hb>=calculate$th-calculate$d, na.rm=T)
     # 8 - Identified as outlier, but not deferred
-    if(i>1) eval(parse(text=paste0("outputsummarytable[",i,",8]<-sum(!is.na(Hb",i,") & Hb",i,"< MeanHb",i-1,"-d & Hb",i,">=th)")))
+    if(i>1) outputsummarytable[i,8] <- sum(!is.na(calculate$Hb) & calculate$Hb < calculate$prevMeanHb - calculate$d & calculate$Hb >= calculate$th, na.rm=T)
   }
-  sum(stopped) 
-  sum(stopped2)
+  stopped <<- length(unique(stopped_KeyID)) 
+  stopped2 <<- length(unique(stopped2_KeyID))
   
-  sum(stopped)/length(stopped) # proportion of stopped donors
-  sum(stopped2)/length(stopped) # proportion of stopped2 donors
+  length(unique(stopped_KeyID))/length(stopped_KeyID) #proportion of stopped donors
+  length(unique(stopped2_KeyID))/length(stopped2_KeyID) #proportion of stopped2 donors
   
   outputsummarytable$defprop<-outputsummarytable$Deferred/(outputsummarytable$Deferred+outputsummarytable$`Non-deferred`)
   outputsummarytable$nondefprop<-outputsummarytable$ShouldNotDeferred/outputsummarytable$Deferred
+  outputsummarytable
   return(list(outputsummarytable=outputsummarytable, stopped=stopped, stopped2=stopped2))
   
 }
