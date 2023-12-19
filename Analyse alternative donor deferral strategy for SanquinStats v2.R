@@ -20,6 +20,7 @@ maincodedatestamp<-"20231218"
 
 # set name of the datafile to use
 FileToUse<-"testdata.RDS" # to be set by the USER 
+FileToUse<-"~/Amber/Data/DonorDeferral/2023-12-19/donaties.rds" # to be set by the USER 
 
 # "FileToUSe" should contain the following data columns (data type in brackets):
 # KeyID   : Unique identifier for each donor (integer)
@@ -163,14 +164,14 @@ colnames(adata)<-c("Hb", "sd", "Sex", "Nrdon")
 
 # calculate distributions for various subsets of nr of donations
 
-if(plot_to_pdf) pdf(file="Hb_distribution_male.pdf")
+if(plot_to_pdf) pdf(file="Hb_distribution_male_nrdon.pdf")
 # nrofquantiles are to be set by the USER 
-malefits  <-fitHbdistributions(adata[adata$Sex=="M",],nrofquantiles=20)
+malefits  <-fitHbdistributions(adata[adata$Sex=="M",],"Nrdon",nrofquantiles=20)
 if(plot_to_pdf) dev.off()
 
-if(plot_to_pdf) pdf(file="Hb_distribution_female.pdf")
+if(plot_to_pdf) pdf(file="Hb_distribution_female_nrdon.pdf")
 # nrofquantiles are to be set by the USER 
-femalefits<-fitHbdistributions(adata[adata$Sex=="F",],nrofquantiles=20)
+femalefits<-fitHbdistributions(adata[adata$Sex=="F",],"Nrdon",nrofquantiles=20)
 if(plot_to_pdf) dev.off()
 
 # stop execution of groupsize is larger than required by the user
@@ -185,8 +186,39 @@ if(malefits$minsubset<mingroupsize | femalefits$minsubset<mingroupsize) {
 maxDons<-max(nHb$x)
 
 # save distribution fits and maxDons
-tosave<-append(tosave, list(malefits=malefits))
-tosave<-append(tosave, list(femalefits=femalefits))
+tosave<-append(tosave, list(malefits_nrdon=malefits))
+tosave<-append(tosave, list(femalefits_nrdon=femalefits))
+tosave<-append(tosave, list(maxDons=maxDons))
+
+# calculate distributions for various subsets of donation intervals
+
+#create donation interval variable
+bdata <- data %>% group_by(KeyID)%>% mutate(count = n(), meanHb = mean(Hb, na.rm=T), sd = sd(Hb, na.rm=T), minDate=min(DonDate), maxDate = max(DonDate)) %>% ungroup() %>% mutate(interval = (maxDate-minDate)/count) %>% ungroup()%>% distinct(KeyID, .keep_all = TRUE) %>% select(Sex, meanHb, sd, interval) %>% mutate(interval=as.numeric(interval)) %>% rename(Hb = meanHb)
+
+if(plot_to_pdf) pdf(file="Hb_distribution_male_interval.pdf")
+# nrofquantiles are to be set by the USER 
+malefits_int <-fitHbdistributions(bdata[bdata$Sex=="M",],"interval",nrofquantiles=20)
+if(plot_to_pdf) dev.off()
+
+if(plot_to_pdf) pdf(file="Hb_distribution_female_interval.pdf")
+# nrofquantiles are to be set by the USER 
+femalefits_int<-fitHbdistributions(bdata[bdata$Sex=="F",],"interval",nrofquantiles=20)
+if(plot_to_pdf) dev.off()
+
+# stop execution of groupsize is larger than required by the user
+if(malefits$minsubset<mingroupsize | femalefits$minsubset<mingroupsize) {
+  print("Code stopped because aggregated group size is smaller than specified by the user")
+  print("Please decrease the nrofquantiles parameter in the fitHbdistributions functions (line 167/172)")
+  print("or increase the mingroupsize (line 56)")
+  stop("Change analysis code")
+}
+
+# set parameter for maximum follow-up
+maxDons<-max(nHb$x)
+
+# save distribution fits and maxDons
+tosave<-append(tosave, list(malefits_int=malefits_int))
+tosave<-append(tosave, list(femalefits_int=femalefits_int))
 tosave<-append(tosave, list(maxDons=maxDons))
 
 # Set indicator for deferral

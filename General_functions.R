@@ -157,7 +157,7 @@ plotmatrix<-function(selID, maxplots, ylim=c(80,180), seedvalue=1){
   }
 }
 
-fitHbdistributions<-function(data, nrofquantiles=20) {
+fitHbdistributions<-function(data,variable, nrofquantiles=20) {
   # function that fits kernel density and smoothing spline for various ranges 
   # of nr of donations per donor. The nr of splits is determined by 
   # the parameter nrofquantiles
@@ -166,14 +166,14 @@ fitHbdistributions<-function(data, nrofquantiles=20) {
   # for Hb and sd per splitpoint the kde, spline and normal fits with the data
   # the counts and fit parameters are returned by the function
   
-  quantiles <- quantile(data$Nrdon, prob = seq(0, 1, length = nrofquantiles+1), type = 5)
-  data$cutted <- cut2(data$Nrdon, cuts = unique(as.numeric(quantiles)))
+  eval(parse(text=paste0("quantiles <- quantile(data$",variable,", prob = seq(0, 1, length = nrofquantiles+1), type = 5)")))
+  eval(parse(text=paste0("data$cutted <- cut2(data$",variable,", cuts = unique(as.numeric(quantiles)))")))
   
   levelsn<-sort(unique(as.numeric(data$cutted)))
   nrsplits<-length(levels(data$cutted))
   hist(as.numeric(data$cutted), xaxt = "n", main="Number of donations per cluster", xlab="Cluster of number of donations", breaks=c(levelsn-.5, max(levelsn)+.5))
   axis(1, at = sort(unique(as.numeric(data$cutted))), labels = levels(data$cutted))
-  sum(table(data$Nrdon))
+  eval(parse(text=paste0("sum(table(data$",variable,"))")))
   nrobs<-table(data$cutted, useNA="always")
   print(nrobs)
   correctforone<-ifelse(as.numeric(dimnames(nrobs)[[1]][1])==1,1,0)
@@ -192,7 +192,7 @@ fitHbdistributions<-function(data, nrofquantiles=20) {
     spl <- with(de, smooth.spline(x, s, df = 25))
     
     normfit<-fitdist(data$Hb[data$cutted==levels(data$cutted)[i]], 'norm')
-    denscomp(normfit, xlab="Hb g/L", main=paste0("Mean Hb for n=", levels(data$cutted)[i]))
+    denscomp(normfit, xlab="Hb g/L", main=paste0("Mean Hb for \n n=", levels(data$cutted)[i]))
     lines(de$x,de$Hb)
     spl <- with(de,smooth.spline(x, s, df = 40))
     lines(predict(spl, de$x, deriv = 1), col = "blue")
@@ -226,6 +226,7 @@ fitHbdistributions<-function(data, nrofquantiles=20) {
   print(paste("minimum subset size:", minsubset))
   return(list(Hbdistr=Hbdistr, Hbsddistr=Hbsddistr,minsubset=minsubset))
 }
+
 
 AnalysePolicyImpact<-function(dataframe){
   # function that analyses the policy impact for a dataset datt containing aggregated donation and Hb data per donor per donation
