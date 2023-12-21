@@ -10,46 +10,40 @@ plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
   # Sel_ID = KeyID of the donor to print
   # leg = include legend in the plot
   # ylim = limits of Hb levels to plot
-
+  
   x<-data[data$KeyID%in%Sel_ID,]$DonDate
   y<-data[data$KeyID%in%Sel_ID,]$Hb
   #Add some random days to date
   x_plot <- x + sample(6,length(x),replace = TRUE) - 3
   # Add a little bit of jitter to Hb 
   y_plot <- jitter(y)
-  main<-paste0("Donor ID = ",Sel_ID," (",ifelse(Sex[KeyID==Sel_ID]=="M", "Male", "Female"),")")
+  main<-paste0("Donor ID = ",Sel_ID," (",ifelse(grepl("M", data$Sex[data$KeyID==Sel_ID]), "Male", "Female"),")")[1]
   plot(x_plot, y_plot, type="l", ylim=ylim, ylab="Haemoglobin level [g/L]", xlab="Time [Years]", main=main)
   
   # calculate updating mean values
-  my<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("my<-c(my,MeanHb",i,"[KeyID%in%Sel_ID])")))
+  my <- data$meanHb[data$KeyID%in%Sel_ID]
   # calculate overall mean Hb level
-  mys<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("mys<-c(mys,MeanHb",length(x),"[KeyID%in%Sel_ID])")))
+  mys<- tail(my, n=1)
   # calculate upper threshold values
-  lyt<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("lyt<-c(lyt, MeanHb",i,"[KeyID%in%Sel_ID]+d[KeyID%in%Sel_ID]/sqrt(",i,"))")))
+  lyt<-data$meanHb[data$KeyID%in%Sel_ID]+data$d[data$KeyID%in%Sel_ID]/sqrt(data$numdons[data$KeyID%in%Sel_ID])
   # calculate lower threshold values for individual measurement
-  lyt2<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("lyt2<-c(lyt2, MeanHb",i,"[KeyID%in%Sel_ID]-d[KeyID%in%Sel_ID])")))
+  lyt2<-data$meanHb[data$KeyID%in%Sel_ID]-data$d[data$KeyID%in%Sel_ID]
   # has to be shifted to the next values
   if (length(lyt2)>1) lyt2<-c(NA,lyt2[1:(length(lyt2)-1)])
-  lyt2u<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("lyt2u<-c(lyt2u, MeanHb",i,"[KeyID%in%Sel_ID]+d[KeyID%in%Sel_ID])")))
+  lyt2u<-data$meanHb[data$KeyID%in%Sel_ID]+data$d[data$KeyID%in%Sel_ID]
   # has to be shifted to the next values
   if (length(lyt2u)>1) lyt2u<-c(NA,lyt2u[1:(length(lyt2u)-1)])
   # calculate extended lower threshold, accounting for mean variability as well!
-  lyt3<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("lyt3<-c(lyt3, MeanHb",i,"[KeyID%in%Sel_ID]-d[KeyID%in%Sel_ID]*(1+1/sqrt(",i,")))")))
+  lyt3<-data$meanHb[data$KeyID%in%Sel_ID]-data$d[data$KeyID%in%Sel_ID]*(1+1/sqrt(data$numdons[data$KeyID%in%Sel_ID]))
   # has to be shifted to the next values
   if (length(lyt3)>1) lyt3<-c(NA,lyt3[1:(length(lyt3)-1)])
-  lyt3u<-c()
-  for(i in 1:length(x)) eval(parse(text=paste0("lyt3u<-c(lyt3u, MeanHb",i,"[KeyID%in%Sel_ID]+d[KeyID%in%Sel_ID]*(1+1/sqrt(",i,")))")))
+  
+  lyt3u<-data$meanHb[data$KeyID%in%Sel_ID]+data$d[data$KeyID%in%Sel_ID]*(1+1/sqrt(data$numdons[data$KeyID%in%Sel_ID]))
   # has to be shifted to the next values
   if (length(lyt3u)>1) lyt3u<-c(NA,lyt3u[1:(length(lyt3u)-1)])
   
   # is there permanent deferral?
-  def<-which(lyt<th[KeyID%in%Sel_ID]) # are there any values below the threshold?
+  def<-which(lyt<data$th[data$KeyID%in%Sel_ID]) # are there any values below the threshold?
   print(paste("Permanent deferral points:", paste(def, collapse=" ")))
   defind<-T
   if(length(def)>0) defind<-which(def>stopafter) # if so, are these later than the stopafter measurement?
@@ -69,8 +63,8 @@ plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
           col=rgb(0.1, .1,0.1, 0.05), border=NA)
   
   #plot the lines
-  abline(h=th[KeyID==Sel_ID], col=1, lwd=2)
-  abline(h=th[KeyID==Sel_ID]-d[KeyID==Sel_ID], col=1, lwd=1, lty=4)
+  abline(h=data$th[data$KeyID==Sel_ID][1], col=1, lwd=2)
+  abline(h=data$th[data$KeyID==Sel_ID][1]-data$d[data$KeyID==Sel_ID][1], col=1, lwd=1, lty=4)
   lines(x, my       , lty=2, col=4)
   lines(x, lyt      , lty=3, col=2)
   lines(x, 2*my-lyt , lty=3, col=2)
@@ -79,21 +73,21 @@ plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
   lines(x, lyt3     , lty=5, col=8)
   lines(x, lyt3u    , lty=5, col=8)
   if(length(def)>0 & is.integer(defind[1])) abline(v=x[def[defind[1]]], col=8) # if so, print
-
+  
   # plot points
   # mark donations
-  sp<- y>=th[KeyID%in%Sel_ID]
+  sp<- y>=data$th[data$KeyID%in%Sel_ID]
   sp[1]<-F
   points(x_plot[sp], y_plot[sp], pch=16)
   # mark unnecessary donations
-  sp<- y<th[KeyID%in%Sel_ID] & y>=lyt2
+  sp<- y<data$th[data$KeyID%in%Sel_ID] & y>=lyt2
   sp[1]<-F
   points(x_plot[sp], y_plot[sp])
   # mark deferrals 
   sp<- y<lyt2
   #    points(x_plot[sp], y[sp], pch=15)
   points(x_plot[sp], y_plot[sp], pch=0)										
-
+  
   #  points(x_plot[1], x_plot[1], col=0, pch=16)
   points(x_plot[1], y_plot[1], pch=8)
   
@@ -121,8 +115,8 @@ plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
            pch=c( 8,16, 1, 0),
            col=c( 1, 1, 1, 1),
            lwd=c( 1, 1, 1, 1), cex=1)
-    }
-  print(paste0("Donor ", Sel_ID,": ", round(sum(y[2:length(y)]<th[KeyID%in%Sel_ID])/(length(y)-1),2)*100,"% of attempts deferred"))
+  }
+  print(paste0("Donor ", Sel_ID,": ", round(sum(y[2:length(y)]<data$th[data$KeyID%in%Sel_ID][1])/(length(y)-1),2)*100,"% of attempts deferred"))
   print("")
 }
 
@@ -177,6 +171,7 @@ fitHbdistributions<-function(data,variable, nrofquantiles=20) {
   nrobs<-table(data$cutted, useNA="always")
   print(nrobs)
   correctforone<-ifelse(as.numeric(dimnames(nrobs)[[1]][1])==1,1,0)
+  correctforone <- ifelse(is.na(correctforone),0,correctforone)
   minsubset<-min(nrobs[nrobs>0]) # set minimum subset size
   
   # set frame for plotting
@@ -244,7 +239,7 @@ AnalysePolicyImpact<-function(dataframe){
   stopped2_KeyID <<- NA # indicator for whether a donors has stopped or not
   # is set when the mean Hb level is below the 
   # eligibility threshold at previous donation
-  sstopafter <<- 3# stop donating after significant evidence only after stopafter donations have been made, is required globally
+  stopafter <<- 3# stop donating after significant evidence only after stopafter donations have been made, is required globally
   maxDons <<- max(data$numdons)
   
   for (i in 1:maxDons ){

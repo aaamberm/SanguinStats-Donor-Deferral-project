@@ -32,7 +32,7 @@ FileToUse<-"~/Amber/Data/DonorDeferral/2023-12-19/donaties.rds" # to be set by t
 # This information is stored in a file called "SavedDeferralData_DD-MM-YYYY.RDS"
 
 # parameter to determine whether the plots go to a pdf file or to screen.
-plot_to_pdf<-F # to be set by the USER 
+plot_to_pdf<-T # to be set by the USER 
 
 # Set minimum acceptable Hb levels for males and females
 dtm<-8.4  # to be set by the USER 
@@ -83,6 +83,8 @@ source("General_functions.R")
 #############################
 # but first write some of the input data to the tosave variable
 # the first item is the name of the datafile used for the analyses
+folder <- paste0("cutoff_", cutoffperc, "/")
+dir.create(folder)
 tosave<-list(FileToUse=FileToUse)
 
 # save code datestamps
@@ -90,7 +92,7 @@ tosave<-append(tosave, list(maincodedatestamp=maincodedatestamp))
 tosave<-append(tosave, list(generalfunctionscodedatestamp=generalfunctionscodedatestamp))
 
 # save cutoff percentage applied
-tosave<-append(tosave, list(cutoffperc=cutoffperc))
+tosave<-append(tosave, list(cutoffperc=cutoff))
 
 # now read in the data
 data<-readRDS(FileToUse)
@@ -164,12 +166,12 @@ colnames(adata)<-c("Hb", "sd", "Sex", "Nrdon")
 
 # calculate distributions for various subsets of nr of donations
 
-if(plot_to_pdf) pdf(file="Hb_distribution_male_nrdon.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_male_nrdon.pdf"))
 # nrofquantiles are to be set by the USER 
 malefits  <-fitHbdistributions(adata[adata$Sex=="M",],"Nrdon",nrofquantiles=20)
 if(plot_to_pdf) dev.off()
 
-if(plot_to_pdf) pdf(file="Hb_distribution_female_nrdon.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_female_nrdon.pdf"))
 # nrofquantiles are to be set by the USER 
 femalefits<-fitHbdistributions(adata[adata$Sex=="F",],"Nrdon",nrofquantiles=20)
 if(plot_to_pdf) dev.off()
@@ -195,12 +197,12 @@ tosave<-append(tosave, list(maxDons=maxDons))
 #create donation interval variable
 bdata <- data %>% group_by(KeyID)%>% mutate(count = n(), meanHb = mean(Hb, na.rm=T), sd = sd(Hb, na.rm=T), minDate=min(DonDate), maxDate = max(DonDate)) %>% ungroup() %>% mutate(interval = (maxDate-minDate)/count) %>% ungroup()%>% distinct(KeyID, .keep_all = TRUE) %>% select(Sex, meanHb, sd, interval) %>% mutate(interval=as.numeric(interval)) %>% rename(Hb = meanHb)
 
-if(plot_to_pdf) pdf(file="Hb_distribution_male_interval.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_male_interval.pdf"))
 # nrofquantiles are to be set by the USER 
 malefits_int <-fitHbdistributions(bdata[bdata$Sex=="M",],"interval",nrofquantiles=20)
 if(plot_to_pdf) dev.off()
 
-if(plot_to_pdf) pdf(file="Hb_distribution_female_interval.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder,"Hb_distribution_female_interval.pdf"))
 # nrofquantiles are to be set by the USER 
 femalefits_int<-fitHbdistributions(bdata[bdata$Sex=="F",],"interval",nrofquantiles=20)
 if(plot_to_pdf) dev.off()
@@ -219,7 +221,6 @@ maxDons<-max(nHb$x)
 # save distribution fits and maxDons
 tosave<-append(tosave, list(malefits_int=malefits_int))
 tosave<-append(tosave, list(femalefits_int=femalefits_int))
-tosave<-append(tosave, list(maxDons=maxDons))
 
 # Set indicator for deferral
 data$def<-ifelse(data$Hb<dtf,1,0)
@@ -240,7 +241,7 @@ tosave<-append(tosave, list(deff=deff))
 
 # plot deferrals per year
 maxdef<-max(c(proportions(defm, margin=1)[,2],proportions(deff, margin=1)[,2]))
-if(plot_to_pdf) pdf(file="Deferrals_per_year.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder,"Deferrals_per_year.pdf"))
 plot(rownames(defm), proportions(defm, margin=1)[,2], ylim=c(0,maxdef*1.2), col="blue", type="l",
      ylab="Proportion deferred", xlab="Year")
 lines(rownames(deff), proportions(deff, margin=1)[,2], col="red")
@@ -249,7 +250,7 @@ points(rownames(deff), proportions(deff, margin=1)[,2], pch=2, col="red")
 legend("topright", c("Males", "Females"), pch=c(1,2), lty=c(1,1), col=c("blue","red"))
 if(plot_to_pdf) dev.off()
 
-if(plot_to_pdf) pdf(file="Distribution_of_donation_counts.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder,"Distribution_of_donation_counts.pdf"))
 
 # plot distribution of number of donations per sex
 with(data[data$Sex=="F",], plot(as.numeric(table(numdons)), type="l", col="red", xlim=c(1,maxDons), log='y',
@@ -292,7 +293,7 @@ set.seed(1)
 self<-which(data$Sex=="F" & data$dt>=intervaltoshow[1] & !is.na(data$ldt))
 sel<-sample(self, nrtoprint, replace=F)
 sel<-sel[order(data$dt[sel])]
-if(plot_to_pdf) pdf(file="Change_in_Hb_level_by_interval_female.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder,"Change_in_Hb_level_by_interval_female.pdf"))
 with(data[sel,], plot(dt, jitter(dHb, amount=.5), col="red", log="x", xlim=intervaltoshow, ylim=ylim,
      xlab="Days between donations", ylab="Change in Hb level [g/L]"))
 abline(h=0,col=8)
@@ -321,7 +322,7 @@ set.seed(1)
 selm<-which(data$Sex=="M" & data$dt>=intervaltoshow[1] & !is.na(data$ldt))
 sel<-sample(selm, nrtoprint, replace=F)
 sel<-sel[order(data$dt[sel])]
-if(plot_to_pdf) pdf(file="Change_in_Hb_level_by_interval_male.pdf")
+if(plot_to_pdf) pdf(file=paste0(folder,"Change_in_Hb_level_by_interval_male.pdf"))
 with(data[sel,], plot(dt, jitter(dHb, amount=.5), col="blue", log="x", xlim=intervaltoshow, ylim=ylim,
                       xlab="Days between donations", ylab="Change in Hb level [g/L]"))
 abline(h=0,col=8)
@@ -357,18 +358,10 @@ tosave<-append(tosave, list(sdm=c(mean(data$Hb[selm]), sd(data$Hb[selm]),
 #     Nr of measurements that were above the threshold value (HbOki)
 # the new dataset is called datt
 
-if(!file.exists("donations_analysis_data.RDS")){ 
-  
-  data <- data %>%
-    group_by(KeyID) %>%
-    mutate(cum_Hb= cumsum(Hb)) %>% ungroup() %>% mutate(meanHb = cum_Hb/numdons)
-  # save file if doesn't exist (wich was already checked)
-  if (!file.exists("donations_analysis_data.RDS")) saveRDS(datt, file="donations_analysis_data.RDS")
+data <- data %>%
+  group_by(KeyID) %>%
+  mutate(cum_Hb= cumsum(Hb)) %>% ungroup() %>% mutate(meanHb = cum_Hb/numdons)
 
-} else {
-  # if the analysis file already exists, open it
-  datt<-readRDS("donations_analysis_data.RDS")
-}
 
 #make a column for the previous Mean Hb
 idx<-1:nrow(data)
@@ -402,10 +395,7 @@ table(data$th-data$d, data$Sex)
 # in terms of number of donors now allowed to donate
 ###################################################################
 
-# detach potentially attached objects
-# attach the datt file to enable analysis of policy impact
-
-analysisresults<-AnalysePolicyImpact(dataframe=dataframeReduce())
+analysisresults<-AnalysePolicyImpact(dataframe=data)
 outputsummarytable<-analysisresults$outputsummarytable
 tosave<-append(tosave, list(analysisresults=analysisresults))
 
@@ -422,7 +412,7 @@ tosave<-append(tosave, list(analysisresults_m=analysisresults_m))
 ###################################################################
 # Write tosave data to datafile
 ###################################################################
-saveRDS(tosave, paste0("SavedDeferralData_",Sys.Date(),"_",cutoffperc,".RDS"))
+saveRDS(tosave, paste0(folder, "SavedDeferralData_",Sys.Date(),".RDS"))
 
 ###################################################################
 # now calculate various statistics of the updated policy 
@@ -494,7 +484,6 @@ if (eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqr
 ###########################
 # select donors with at least ndef deferrals at donation n and an average Hb level above the deferral threshold
 data <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
-data_complete <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
 
 n<-29     # to be set by the USER 
 ndef<-8  # to be set by the USER 
@@ -521,7 +510,7 @@ if (eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta 
   eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
-  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n," but with an average of ",delta," above the threshold.pdf")))
+  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0(folder, "Deferral at ",n," but with an average of ",delta," above the threshold.pdf")))
   plotmatrix(selID, maxplots=maxplots)
   if(plot_to_pdf) dev.off()
   # plot another subset
