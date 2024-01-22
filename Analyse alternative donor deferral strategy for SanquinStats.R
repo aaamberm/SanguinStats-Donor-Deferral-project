@@ -20,7 +20,6 @@ maincodedatestamp<-"20240122"
 
 # set name of the datafile to use
 FileToUse<-"testdata.RDS" # to be set by the USER
-FileToUse<-"~/Amber/Data/DonorDeferral/2023-12-19/donaties.rds" # to be set by the USER #REMOVE
 
 # "FileToUSe" should contain the following data columns (data type in brackets):
 # KeyID   : Unique identifier for each donor (integer)
@@ -152,7 +151,6 @@ if (!Hb_in_gpl){
   data$Hb<-data$Hb/0.06206
 }
 
-data <- data[data$numdons<17,] #REMOVE
 # calculate sex, mean Hb, Sd and nr of donations per donor
 meanHb<-aggregate(data$Hb, by=list(data$KeyID), mean)
 SdHb<-aggregate(data$Hb, by=list(data$KeyID), sd)
