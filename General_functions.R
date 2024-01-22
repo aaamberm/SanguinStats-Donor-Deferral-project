@@ -3,7 +3,7 @@
 ###########################################
 
 # Set code date timestamp
-generalfunctionscodedatestamp<-"20240107"
+generalfunctionscodedatestamp<-"20240122"
 
 # function that plots the donation profile of an individual donor
 plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
@@ -151,7 +151,7 @@ plotmatrix<-function(selID, maxplots, ylim=c(80,180), seedvalue=1){
   }
 }
 
-fitHbdistributions<-function(data,variable, nrofquantiles=20) {
+fitHbdistributions<-function(data,variable) {
   # function that fits kernel density and smoothing spline for various ranges 
   # of nr of donations per donor. The nr of splits is determined by 
   # the parameter nrofquantiles
@@ -159,45 +159,55 @@ fitHbdistributions<-function(data,variable, nrofquantiles=20) {
   # the function produces three plots; the nr of observations per splitpoint, and
   # for Hb and sd per splitpoint the kde, spline and normal fits with the data
   # the counts and fit parameters are returned by the function
-  
-  eval(parse(text=paste0("quantiles <- quantile(data$",variable,", prob = seq(0, 1, length = nrofquantiles+1), type = 5)")))
-  eval(parse(text=paste0("data$cutted <- cut2(data$",variable,", cuts = unique(as.numeric(quantiles)))")))
+  breakpoints <- c(0:20, Inf)
+  data$cutted <- cut(data$Nrdon, breaks = breakpoints, labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"), include.lowest = TRUE)
+  labels <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "20+")
   
   levelsn<-sort(unique(as.numeric(data$cutted)))
   nrsplits<-length(levels(data$cutted))
   hist(as.numeric(data$cutted), xaxt = "n", main="Number of donations per cluster", xlab="Cluster of number of donations", breaks=c(levelsn-.5, max(levelsn)+.5))
-  axis(1, at = sort(unique(as.numeric(data$cutted))), labels = levels(data$cutted))
-  eval(parse(text=paste0("sum(table(data$",variable,"))")))
+  axis(1, at = sort(unique(as.numeric(data$cutted))), labels = levels(data$cutted)[1:length(levelsn)])
   nrobs<-table(data$cutted, useNA="always")
   print(nrobs)
   minsubset<-min(nrobs[nrobs>0]) # set minimum subset size
   
   # set frame for plotting
-  lid<-round(sqrt(nrsplits))
-  par(mfrow=c(lid,ceiling(nrsplits/lid)))
+  lid<-round(sqrt(length(levelsn)))
+  par(mfrow=c(lid,ceiling(length(levelsn)/lid)))
   
-  # distribution of Hb levels
-  par(mfrow=c(lid,ceiling(nrsplits/lid)))
-  Hbdistr<-list(n=table(data$cutted, useNA="always"))
-  for (i in 1:length(levels(data$cutted))){
-    de<-density(data$Hb[data$cutted==levels(data$cutted)[i]])
+  # distribution of variable
+  par(mfrow=c(lid,ceiling(length(levelsn)/lid)))
+  eval(parse(text=paste0(variable,"distr<-list(n=table(data$cutted, useNA=\"always\"))")))
+  if(variable == "Hb"){
+    xlab = "Hb g/L"
+    xlim = c(100,200)
+  } else if (variable == "interval"){
+    xlab = "Days"
+    xlim = c(0,1000)
+  } else{
+    xlab = " "
+    xlim=c(0,1)
+  }
+  for (level in levelsn){
+    eval(parse(text=paste0("de<-density(data$",variable,"[data$cutted==",level,"])")))
     de$s<-cumsum(de$y)/sum(de$y)
     spl <- with(de, smooth.spline(x, s, df = 25))
+    eval(parse(text=paste0("normfit<-fitdist(data$",variable,"[data$cutted==",level,"], 'norm')")))
+    title <- paste0("Mean ", variable, " for \n n=", labels[level])
+    eval(parse(text = paste0("denscomp(normfit, xlab=xlab, addlegend=F, main=title)")))
+    eval(parse(text=paste0("lines(de$x,de$",variable,")")))
     
-    normfit<-fitdist(data$Hb[data$cutted==levels(data$cutted)[i]], 'norm')
-    denscomp(normfit, xlab="Hb g/L", main=paste0("Mean Hb for \n n=", levels(data$cutted)[i]))
-    lines(de$x,de$Hb)
     spl <- with(de,smooth.spline(x, s, df = 40))
     lines(predict(spl, de$x, deriv = 1), col = "blue")
-    eval(parse(text=paste0("Hbdistr<-append(Hbdistr,list(de",i,"=de))")))
-    eval(parse(text=paste0("Hbdistr<-append(Hbdistr,list(spl",i,"=spl))")))
+    eval(parse(text=paste0(variable, "distr<-append(",variable,"distr,list(de",level,"=de))")))
+    eval(parse(text=paste0(variable, "distr<-append(",variable,"distr,list(spl",level,"=spl))")))
   }
-  # distribution of Hb sd estimates
-  lid<-round(sqrt(nrsplits))
-  par(mfrow=c(lid,ceiling((nrsplits)/lid)))
-  Hbsddistr<-list()
-  for (i in 1:length(levels(data$cutted))){
-    dat<-data$sd[data$cutted==levels(data$cutted)[i]]
+  # distribution of sd estimates
+  lid<-round(sqrt(length(levelsn)))
+  par(mfrow=c(lid,ceiling(length(levelsn)/lid)))
+  eval(parse(text=paste0(variable,"sddistr<-list(n=table(data$cutted, useNA=\"always\"))")))
+  for (level in levelsn){
+    eval(parse(text=paste0("dat<-data$sd[data$cutted==",level,"]")))
     dat<-dat[!is.na(dat)]
     if (length(dat)>1) {
       if(length(dat)<minsubset) minsubset<-length(dat)
@@ -206,18 +216,19 @@ fitHbdistributions<-function(data,variable, nrofquantiles=20) {
       spl <- with(de,smooth.spline(x, s, df = 25))
       
       normfit<-fitdist(dat, 'norm')
-      denscomp(normfit, xlab="Hb g/L", main=paste0("Hb Sd for n=", levels(data$cutted)[i]))
+      title <- paste0("Sd for n=", labels[level])
+      eval(parse(text=paste0("denscomp(normfit, xlab=xlab, addlegend=F, main=title)")))
       lines(de$x,de$y)
       spl <- with(de,smooth.spline(x, s, df = 40))
       lines(predict(spl, de$x, deriv = 1), col = "blue")
-      eval(parse(text=paste0("Hbsddistr<-append(Hbsddistr,list(de",i,"=de))")))
-      eval(parse(text=paste0("Hbsddistr<-append(Hbsddistr,list(spl",i,"=spl))")))
-      eval(parse(text=paste0("Hbsddistr<-append(Hbsddistr,list(n",i,"=length(dat)))")))
+      eval(parse(text=paste0(variable, "sddistr<-append(",variable,"sddistr,list(de",level,"=de))")))
+      eval(parse(text=paste0(variable, "sddistr<-append(",variable,"sddistr,list(spl",level,"=spl))")))
+      eval(parse(text=paste0(variable, "sddistr<-append(",variable,"sddistr,list(n",level,"=length(dat)))")))
     }
   }
   par(mfrow=c(1,1))
   print(paste("minimum subset size:", minsubset))
-  return(list(Hbdistr=Hbdistr, Hbsddistr=Hbsddistr,minsubset=minsubset))
+  eval(parse(text=paste0("return(list(",variable,"distr=",variable,"distr, ",variable,"sddistr=",variable,"sddistr,minsubset=minsubset))")))
 }
 
 

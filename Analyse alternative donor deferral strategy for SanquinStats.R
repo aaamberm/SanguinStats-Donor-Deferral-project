@@ -12,14 +12,15 @@ setwd(this.dir()) # set the active working directory to the directory of this fi
 getwd()
 
 # Set code date 
-maincodedatestamp<-"20240107"
+maincodedatestamp<-"20240122"
 
 #############################
 # Define user input
 #############################
 
 # set name of the datafile to use
-FileToUse<-"testdata.RDS" # to be set by the USER 
+FileToUse<-"testdata.RDS" # to be set by the USER
+FileToUse<-"~/Amber/Data/DonorDeferral/2023-12-19/donaties.rds" # to be set by the USER #REMOVE
 
 # "FileToUSe" should contain the following data columns (data type in brackets):
 # KeyID   : Unique identifier for each donor (integer)
@@ -51,9 +52,6 @@ changeIDs<-T # to be set by the USER
 
 # Set deferral percentile level
 cutoffperc<-0.99 # to be set by the USER 
-
-# set minimum size of the groups for aggregated data
-mingroupsize<-20 # to be set by the USER 
 
 # Note that the analyses may take a substantial amount of time. Therefore an analysis file 
 # ("donations_analysis_data.RDS") will be created, which allows speeding up the analyses
@@ -147,13 +145,14 @@ if (changeIDs) {
 numdons<-table(data$numdons, data$Sex) 
 numdons
 
-# convert Hb levels if so required
+#convert Hb levels if so required
 if (!Hb_in_gpl){
   dtm<-dtm/0.06206 -1e-6 # subtract a small margin to compensate for rounding errors
   dtf<-dtf/0.06206 -1e-6
   data$Hb<-data$Hb/0.06206
 }
 
+data <- data[data$numdons<17,] #REMOVE
 # calculate sex, mean Hb, Sd and nr of donations per donor
 meanHb<-aggregate(data$Hb, by=list(data$KeyID), mean)
 SdHb<-aggregate(data$Hb, by=list(data$KeyID), sd)
@@ -164,57 +163,47 @@ adata<-merge(adata,nHb, by="Group.1")
 adata$Group.1<-NULL
 colnames(adata)<-c("Hb", "sd", "Sex", "Nrdon")
 
+
 # calculate distributions for various subsets of nr of donations
 
-if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_male_nrdon.pdf"))
+if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_male.pdf"), paper = "a4", height = 20, width =20)
 # nrofquantiles are to be set by the USER 
-malefits  <-fitHbdistributions(adata[adata$Sex=="M",],"Nrdon",nrofquantiles=20)
+malefits  <-fitHbdistributions(adata[adata$Sex=="M",],"Hb")
 if(plot_to_pdf) dev.off()
 
-if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_female_nrdon.pdf"))
+if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_female.pdf"),paper = "a4", height = 20, width =20)
 # nrofquantiles are to be set by the USER 
-femalefits<-fitHbdistributions(adata[adata$Sex=="F",],"Nrdon",nrofquantiles=20)
+femalefits<-fitHbdistributions(adata[adata$Sex=="F",],"Hb")
 if(plot_to_pdf) dev.off()
 
-# stop execution of groupsize is larger than required by the user
-if(malefits$minsubset<mingroupsize | femalefits$minsubset<mingroupsize) {
-  print("Code stopped because aggregated group size is smaller than specified by the user")
-  print("Please decrease the nrofquantiles parameter in the fitHbdistributions functions (line 167/172)")
-  print("or increase the mingroupsize (line 56)")
-  stop("Change analysis code")
-}
 
 # set parameter for maximum follow-up
 maxDons<-max(nHb$x)
 
 # save distribution fits and maxDons
 tosave<-append(tosave, list(numdons=numdons))
-tosave<-append(tosave, list(malefits_nrdon=malefits))
-tosave<-append(tosave, list(femalefits_nrdon=femalefits))
+tosave<-append(tosave, list(malefits_hb=malefits))
+tosave<-append(tosave, list(femalefits_hb=femalefits))
 tosave<-append(tosave, list(maxDons=maxDons))
 
 # calculate distributions for various subsets of donation intervals
 
 #create donation interval variable
-bdata <- data %>% group_by(KeyID)%>% mutate(count = n(), meanHb = mean(Hb, na.rm=T), sd = sd(Hb, na.rm=T), minDate=min(DonDate), maxDate = max(DonDate)) %>% ungroup() %>% mutate(interval = (maxDate-minDate)/count) %>% ungroup()%>% distinct(KeyID, .keep_all = TRUE) %>% select(Sex, meanHb, sd, interval) %>% mutate(interval=as.numeric(interval)) %>% rename(Hb = meanHb)
+bdata <- data %>% group_by(KeyID)%>% mutate(interval = as.numeric(DonDate - lag(DonDate)), meanInt = mean(interval, na.rm=T), sdInt = sd(interval, na.rm=T), Nrdon = max(numdons)) %>% ungroup() %>% select(Sex, meanInt, sdInt, Nrdon, KeyID) %>% distinct(KeyID, .keep_all = T) %>% select(-KeyID)
 
-if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_male_interval.pdf"))
+colnames(bdata) <- c("Sex", "interval", "sd", "Nrdon")
+bdata <- bdata[!is.na(bdata$interval),]
+
+if(plot_to_pdf) pdf(file=paste0(folder, "DonInterval_distribution_male.pdf"),paper = "a4", height = 20, width =20)
 # nrofquantiles are to be set by the USER 
-malefits_int <-fitHbdistributions(bdata[bdata$Sex=="M",],"interval",nrofquantiles=20)
+malefits_int <-fitHbdistributions(bdata[bdata$Sex=="M",],"interval")
 if(plot_to_pdf) dev.off()
 
-if(plot_to_pdf) pdf(file=paste0(folder,"Hb_distribution_female_interval.pdf"))
+if(plot_to_pdf) pdf(file=paste0(folder,"DonInterval_distribution_female.pdf"),paper = "a4", height = 20, width =20)
 # nrofquantiles are to be set by the USER 
-femalefits_int<-fitHbdistributions(bdata[bdata$Sex=="F",],"interval",nrofquantiles=20)
+femalefits_int<-fitHbdistributions(bdata[bdata$Sex=="F",],"interval")
 if(plot_to_pdf) dev.off()
 
-# stop execution of groupsize is larger than required by the user
-if(malefits$minsubset<mingroupsize | femalefits$minsubset<mingroupsize) {
-  print("Code stopped because aggregated group size is smaller than specified by the user")
-  print("Please decrease the nrofquantiles parameter in the fitHbdistributions functions (line 167/172)")
-  print("or increase the mingroupsize (line 56)")
-  stop("Change analysis code")
-}
 
 # set parameter for maximum follow-up
 maxDons<-max(nHb$x)
