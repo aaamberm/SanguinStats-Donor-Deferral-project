@@ -3,7 +3,7 @@
 ###########################################
 
 # Set code date timestamp
-generalfunctionscodedatestamp<-"20231004"
+generalfunctionscodedatestamp<-"20240107"
 
 # function that plots the donation profile of an individual donor
 plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
@@ -170,8 +170,6 @@ fitHbdistributions<-function(data,variable, nrofquantiles=20) {
   eval(parse(text=paste0("sum(table(data$",variable,"))")))
   nrobs<-table(data$cutted, useNA="always")
   print(nrobs)
-  correctforone<-ifelse(as.numeric(dimnames(nrobs)[[1]][1])==1,1,0)
-  correctforone <- ifelse(is.na(correctforone),0,correctforone)
   minsubset<-min(nrobs[nrobs>0]) # set minimum subset size
   
   # set frame for plotting
@@ -195,13 +193,13 @@ fitHbdistributions<-function(data,variable, nrofquantiles=20) {
     eval(parse(text=paste0("Hbdistr<-append(Hbdistr,list(spl",i,"=spl))")))
   }
   # distribution of Hb sd estimates
-  lid<-round(sqrt(nrsplits-correctforone))
-  par(mfrow=c(lid,ceiling((nrsplits-correctforone)/lid)))
+  lid<-round(sqrt(nrsplits))
+  par(mfrow=c(lid,ceiling((nrsplits)/lid)))
   Hbsddistr<-list()
   for (i in 1:length(levels(data$cutted))){
     dat<-data$sd[data$cutted==levels(data$cutted)[i]]
     dat<-dat[!is.na(dat)]
-    if (length(dat)>1 & str_trim(dimnames(nrobs)[[1]][i])!="1") {
+    if (length(dat)>1) {
       if(length(dat)<minsubset) minsubset<-length(dat)
       de<-density(dat)
       de$s<-cumsum(de$y)/sum(de$y)
