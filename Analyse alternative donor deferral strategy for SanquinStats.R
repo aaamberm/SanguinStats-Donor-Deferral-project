@@ -12,7 +12,7 @@ setwd(this.dir()) # set the active working directory to the directory of this fi
 getwd()
 
 # Set code date 
-maincodedatestamp<-"20231218"
+maincodedatestamp<-"20240107"
 
 #############################
 # Define user input
@@ -20,7 +20,6 @@ maincodedatestamp<-"20231218"
 
 # set name of the datafile to use
 FileToUse<-"testdata.RDS" # to be set by the USER 
-FileToUse<-"~/Amber/Data/DonorDeferral/2023-12-19/donaties.rds" # to be set by the USER 
 
 # "FileToUSe" should contain the following data columns (data type in brackets):
 # KeyID   : Unique identifier for each donor (integer)
@@ -92,7 +91,7 @@ tosave<-append(tosave, list(maincodedatestamp=maincodedatestamp))
 tosave<-append(tosave, list(generalfunctionscodedatestamp=generalfunctionscodedatestamp))
 
 # save cutoff percentage applied
-tosave<-append(tosave, list(cutoffperc=cutoff))
+tosave<-append(tosave, list(cutoffperc=cutoffperc))
 
 # now read in the data
 data<-readRDS(FileToUse)
@@ -145,7 +144,8 @@ if (changeIDs) {
 }
 
 # calculate distribution of nr of donations per donor
-table(data$numdons, data$Sex) 
+numdons<-table(data$numdons, data$Sex) 
+numdons
 
 # convert Hb levels if so required
 if (!Hb_in_gpl){
@@ -188,6 +188,7 @@ if(malefits$minsubset<mingroupsize | femalefits$minsubset<mingroupsize) {
 maxDons<-max(nHb$x)
 
 # save distribution fits and maxDons
+tosave<-append(tosave, list(numdons=numdons))
 tosave<-append(tosave, list(malefits_nrdon=malefits))
 tosave<-append(tosave, list(femalefits_nrdon=femalefits))
 tosave<-append(tosave, list(maxDons=maxDons))
@@ -295,11 +296,11 @@ sel<-sample(self, nrtoprint, replace=F)
 sel<-sel[order(data$dt[sel])]
 if(plot_to_pdf) pdf(file=paste0(folder,"Change_in_Hb_level_by_interval_female.pdf"))
 with(data[sel,], plot(dt, jitter(dHb, amount=.5), col="red", log="x", xlim=intervaltoshow, ylim=ylim,
-     xlab="Days between donations", ylab="Change in Hb level [g/L]"))
+                      xlab="Days between donations", ylab="Change in Hb level [g/L]"))
 abline(h=0,col=8)
 # add rolling mean
 with(data[sel,], lines(dt, rollmean(dHb, rollmeanWidth, fill = list(NA, NULL, NA)),
-  col = 3, lwd = 3 ))
+                       col = 3, lwd = 3 ))
 linfitf<-lm(dHb~ldt, data=data[self,])
 summary(linfitf)
 cx<-as.data.frame(log10(intervaltoshow))
@@ -314,7 +315,7 @@ sd(linfitf$residuals)
 # save info
 tosave<-append(tosave, list(coeff=linfitf$coefficients))
 tosave<-append(tosave, list(sdf=c(mean(data$Hb[self]), sd(data$Hb[self]), 
-                            sd(data$dHb[self]), sd(linfitf$residuals))))
+                                  sd(data$dHb[self]), sd(linfitf$residuals))))
 
 # plot association between time and Hb change for males
 intervaltoshow<-c(50, 730) # time interval to show
@@ -356,7 +357,6 @@ tosave<-append(tosave, list(sdm=c(mean(data$Hb[selm]), sd(data$Hb[selm]),
 #     Mean Hb level (MeanHbi) of all past donations, 
 #     Nr of visits (nHbi), and 
 #     Nr of measurements that were above the threshold value (HbOki)
-# the new dataset is called datt
 
 data <- data %>%
   group_by(KeyID) %>%
@@ -471,13 +471,13 @@ maxplots<-3  # USER: Set the maximum number of graphs to plot in row/column of a
 def<-6 # to be set by the USER 
 n<-9  # to be set by the USER 
 # Nr of donors that fit the criterion
-eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb) & data$totaldon >",n,", na.rm=T)")))
+(totnr<-eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb) & data$totaldon >",n,", na.rm=T)"))))
 if (eval(parse(text=paste0("sum(data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb)  & data$totaldon >",n,", na.rm=T)")))>0) {
   # set selection of donors
   eval(parse(text=paste0("selID<-data$KeyID[data$numdons==",def, "& data$meanHb + data$d/sqrt(",def,")<data$th & data$Hb > data$th & !is.na(data$Hb)  & data$totaldon >",n,"]")))
   print(selID[!is.na(selID)])
   # plot the donor profile in a matrix
-  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at donation ",def," minimum of ",n," donations.pdf")))
+  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at donation ",def," minimum of ",n," donations; ",totnr," in total.pdf")))
   plotmatrix(selID,maxplots=maxplots, ylim=c(70,160),)
   if(plot_to_pdf) dev.off()
 }
@@ -488,13 +488,13 @@ data <- data %>% group_by(KeyID) %>% mutate(def_count = cumsum(def))
 n<-29     # to be set by the USER 
 ndef<-8  # to be set by the USER 
 # Nr of donors selected
-eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))")))
+(totnr<-eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))"))))
 if(eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb))")))>0){
   # set selection of donors
   eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n," & data$def_count >= ndef & data$meanHb > data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
-  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n,", but with an average Hb level above the threshold.pdf")))
+  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n," but with an average Hb level above the threshold; ",totnr," in total.pdf")))
   plotmatrix(selID,maxplots=maxplots)
   if(plot_to_pdf) dev.off()
 }
@@ -504,16 +504,15 @@ if(eval(parse(text=paste0("sum(data$numdons ==",n," & data$def_count >= ndef & d
 n<-30    # to be set by the USER 
 delta<-5 # to be set by the USER 
 # Nr of donors selected
-eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))")))
+(totnr<-eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))"))))
 if (eval(parse(text=paste0("sum(data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb))")))>0){
   # set selection of donors
   eval(parse(text=paste0("selID<-data$KeyID[data$numdons ==",n,"& data$meanHb>data$th+delta & data$Hb<data$th & !is.na(data$Hb)]")))
   print(selID)
   # plot the donor profile in a matrix
-  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0(folder, "Deferral at ",n," but with an average of ",delta," above the threshold.pdf")))
+  if(plot_to_pdf) pdf(file=gsub(" ","_",paste0("Deferral at ",n," but with an average of ",delta," above the threshold; ",totnr," in total.pdf")))
   plotmatrix(selID, maxplots=maxplots)
   if(plot_to_pdf) dev.off()
   # plot another subset
   # plotmatrix(selID, 2, seedvalue=2)
 }
-
