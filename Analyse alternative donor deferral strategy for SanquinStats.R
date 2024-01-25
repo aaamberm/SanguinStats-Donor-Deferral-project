@@ -20,6 +20,7 @@ maincodedatestamp<-"20240122"
 
 # set name of the datafile to use
 FileToUse<-"testdata.RDS" # to be set by the USER
+FileToUse<-"~/Amber/Data/DonorDeferral/2023-12-19/donaties.rds" # to be set by the USER #REMOVE
 
 # "FileToUSe" should contain the following data columns (data type in brackets):
 # KeyID   : Unique identifier for each donor (integer)
@@ -151,6 +152,7 @@ if (!Hb_in_gpl){
   data$Hb<-data$Hb/0.06206
 }
 
+data <- data[data$numdons<17,]
 # calculate sex, mean Hb, Sd and nr of donations per donor
 meanHb<-aggregate(data$Hb, by=list(data$KeyID), mean)
 SdHb<-aggregate(data$Hb, by=list(data$KeyID), sd)
@@ -161,17 +163,16 @@ adata<-merge(adata,nHb, by="Group.1")
 adata$Group.1<-NULL
 colnames(adata)<-c("Hb", "sd", "Sex", "Nrdon")
 
-
 # calculate distributions for various subsets of nr of donations
 
 if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_male.pdf"), paper = "a4", height = 20, width =20)
 # nrofquantiles are to be set by the USER 
-malefits  <-fitHbdistributions(adata[adata$Sex=="M",],"Hb")
+malefits_hb<-fitHbdistributions(adata[adata$Sex=="M",],"Hb")
 if(plot_to_pdf) dev.off()
 
 if(plot_to_pdf) pdf(file=paste0(folder, "Hb_distribution_female.pdf"),paper = "a4", height = 20, width =20)
 # nrofquantiles are to be set by the USER 
-femalefits<-fitHbdistributions(adata[adata$Sex=="F",],"Hb")
+femalefits_hb<-fitHbdistributions(adata[adata$Sex=="F",],"Hb")
 if(plot_to_pdf) dev.off()
 
 
@@ -180,8 +181,8 @@ maxDons<-max(nHb$x)
 
 # save distribution fits and maxDons
 tosave<-append(tosave, list(numdons=numdons))
-tosave<-append(tosave, list(malefits_hb=malefits))
-tosave<-append(tosave, list(femalefits_hb=femalefits))
+tosave<-append(tosave, list(malefits_hb=malefits_hb))
+tosave<-append(tosave, list(femalefits_hb=femalefits_hb))
 tosave<-append(tosave, list(maxDons=maxDons))
 
 # calculate distributions for various subsets of donation intervals
