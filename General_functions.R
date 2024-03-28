@@ -3,7 +3,7 @@
 ###########################################
 
 # Set code date timestamp
-generalfunctionscodedatestamp<-"20240122"
+generalfunctionscodedatestamp<-"20240208"
 
 # function that plots the donation profile of an individual donor
 plotdonorprofile<-function(Sel_ID, leg=F, ylim=c(0,200)) {
@@ -151,18 +151,19 @@ plotmatrix<-function(selID, maxplots, ylim=c(80,180), seedvalue=1){
   }
 }
 
-fitHbdistributions<-function(data,variable) {
+FitDistributions<-function(data,variable) {
   # function that fits kernel density and smoothing spline for various ranges 
-  # of nr of donations per donor. The nr of splits is determined by 
-  # the parameter nrofquantiles
-  # the input data should consist of variables Hb, sd and Nrdon
+  # of nr of donations per donor. The nr of splits is preset by the vector breakpoints
+  # the input data should consist of variables Hb/interval, sd and Nrdon
   # the function produces three plots; the nr of observations per splitpoint, and
-  # for Hb and sd per splitpoint the kde, spline and normal fits with the data
-  # the counts and fit parameters are returned by the function
+  # for Hb/interval and sd per splitpoint the kde, spline and normal fits. The data
+  # the counts and fit parameters as well as a list of quantiles per splitpoint are 
+  # returned by the function
   breakpoints <- c(0:7, (cumsum(1:20) + 7), Inf)
-
   labels <-c("[0,1]", "(1,2]", "(2,3]", "(3,4]", "(4,5]", "(5,6]", "(6,7]", "(7,8]", "(8,10]", "(10,13]", "(13,17]", "(17,22]", "(22,28]", "(28,35]", "(35,43]", "(43,52]", "(52,62]", "(62,73]", "(73,85]", "(85,98]", "(98,112]", "(112,127]", "(127,143]", "(143,160]", "(160,178]", "(178,197]", "(197,217]", "(217,Inf]")
-  
+
+  nrq<-20 # nr of quantiles to return per splitpoint
+    
   data$cutted <- cut(data$Nrdon, breaks = breakpoints, include.lowest = TRUE)
   level_counts <- table(data$cutted)
   # Extract levels with non-zero counts
@@ -170,7 +171,6 @@ fitHbdistributions<-function(data,variable) {
   data$cutted <- as.numeric(data$cutted)
   
   levelsn<-sort(unique(as.numeric(data$cutted)))
-  nrsplits<-length(levels(data$cutted))
   hist(as.numeric(data$cutted), xaxt = "n", main="Number of donations per cluster", xlab="Cluster of number of donations", breaks=c(levelsn-.5, max(levelsn)+.5))
   axis(1, at = sort(unique(as.numeric(data$cutted))), labels = axis.labels)
   nrobs<-table(data$cutted, useNA="always")
@@ -208,9 +208,11 @@ fitHbdistributions<-function(data,variable) {
     lines(predict(spl, de$x, deriv = 1), col = "blue")
     eval(parse(text=paste0(variable, "distr<-append(",variable,"distr,list(de",level,"=de))")))
     eval(parse(text=paste0(variable, "distr<-append(",variable,"distr,list(spl",level,"=spl))")))
-    eval(parse(text=paste0("distr_table <- rbind(distr_table, c(",level,", labels[",level,"],length(data$",variable,"[data$cutted==",level,"]), mean(data$",variable,"[data$cutted==",level,"], na.rm=T), sd(data$",variable,"[data$cutted==",level,"], na.rm=T), median(data$",variable,"[data$cutted==",level,"], na.rm=T)))")))
+    eval(parse(text=paste0("distr_table <- rbind(distr_table, c(",level,", labels[",level,"],length(data$",variable,"[data$cutted==",level,"]), mean(data$",variable,"[data$cutted==",level,"], na.rm=T), sd(data$",variable,"[data$cutted==",level,"], na.rm=T), median(data$",variable,"[data$cutted==",level,"], na.rm=T),    
+       quantile(data$",variable,"[data$cutted==",level,"], (1:nrq)/nrq-1/2/nrq) ))")))
   }
-  colnames(distr_table)<-c("group", "label", "n", "mean", "sd", "median")
+  colnames(distr_table)<-c("group", "label", "n", "mean", "sd", "median", paste0(((1:nrq)/nrq-1/2/nrq)*100,"%"))
+
   # distribution of sd estimates
   lid<-round(sqrt(length(levelsn)))
   par(mfrow=c(lid,ceiling(length(levelsn)/lid)))
@@ -224,7 +226,7 @@ fitHbdistributions<-function(data,variable) {
       de<-density(dat)
       de$s<-cumsum(de$y)/sum(de$y)
       spl <- with(de,smooth.spline(x, s, df = 25))
-      distr_table_sd <- rbind(distr_table_sd, c(level, labels[level], length(dat), mean(dat, na.rm=T), sd(dat, na.rm=T), median(dat, na.rm=T)))
+      distr_table_sd <- rbind(distr_table_sd, c(level, labels[level], length(dat), mean(dat, na.rm=T), sd(dat, na.rm=T), median(dat, na.rm=T), quantile(dat, (1:nrq)/nrq-1/2/nrq)))
       normfit<-fitdist(dat, 'norm')
       title <- paste0("Sd for \n n=", labels[level])
       eval(parse(text=paste0("denscomp(normfit, xlab=xlab, addlegend=F, main=title)")))
@@ -236,7 +238,7 @@ fitHbdistributions<-function(data,variable) {
       eval(parse(text=paste0(variable, "sddistr<-append(",variable,"sddistr,list(n",level,"=length(dat)))")))
     }
   }
-  colnames(distr_table_sd)<-c("group", "label", "n", "mean", "sd", "median")
+  colnames(distr_table_sd)<-c("group", "label", "n", "mean", "sd", "median", paste0(((1:nrq)/nrq-1/2/nrq)*100,"%"))
   par(mfrow=c(1,1))
   print(paste("minimum subset size:", minsubset))
   eval(parse(text=paste0("return(list(",variable,"distr=",variable,"distr, ",variable,"sddistr=",variable,"sddistr,minsubset=minsubset, distr_table=distr_table, distr_table_sd = distr_table_sd))")))
